@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Environment files (contain secrets)
+.env
+.Renviron
+
+# R artifacts
+.Rhistory
+.RData
+.Rproj.user/
+
+# renv cache (will be restored from lock file)
+renv/library/
+renv/staging/
+renv/python/
+
+# IDE
+.vscode/
+.idea/
+
+# Documentation
+*.md
+!README.md
+PLAN.md
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Misc
+*.log
+*.tmp

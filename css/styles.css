@@ -1,0 +1,44 @@
+/* Fonts */
+@import url("https://fonts.cdnfonts.com/css/gotham-6");
+
+body {
+    font-family: "Gotham", sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+    font-family: "Gotham", sans-serif;
+}
+
+input {
+    font-family: "Gotham", sans-serif;
+}
+
+p { 
+    font-family: "Gotham", sans-serif;
+    color: white;
+}
+
+/* Navbar */
+.navbar-default .navbar-brand {
+    color: #1DB954 !important;
+}
+
+/* Main */
+.container-fluid {
+    background-color: #191414;
+}
+
+.irs-bar {
+    border-top: 1px solid #1DB954 !important;
+    border-bottom: 1px solid #1DB954 !important;
+    background: #1DB954 !important;
+}
+
+.irs-single {
+    background-color: #1DB954 !important;
+}
+
+.plot-center {
+    display: flex;
+    justify-content: center;
+}
