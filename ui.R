@@ -95,107 +95,168 @@ uiFunc <- function(req) {
                 )
             ),
 
-            # Feature per Album tab
+            # Top Artists tab - shows user's top artists with details
             tabPanel(
-                "Feature per Album",
+                "Top Artists",
                 sidebarPanel(
-                    h3("Features:"),
-
-                    # User selection of features to display
+                    h3("Your Top Artists"),
+                    br(),
+                    p("This shows your top 20 artists from Spotify, ranked by how much you listen to them."),
+                    br(),
                     selectInput(
-                        "feature",
-                        "Select a feature to view:",
-                        choices  = features,
-                        selected = "acousticness"
+                        "time_range_artists",
+                        "Time range:",
+                        choices = c(
+                            "Last 4 weeks" = "short_term",
+                            "Last 6 months" = "medium_term",
+                            "All time" = "long_term"
+                        ),
+                        selected = "medium_term"
                     ),
-
-                    # Introduction about the selected feature
-                    textOutput("feature_introduction")
+                    br(),
+                    p("Click on an artist bar to see more details.")
                 ),
-
-                # Plotting area
                 mainPanel(
-                    plotlyOutput("summary_plot", height = 700)
+                    plotlyOutput("top_artists_plot", height = 700)
                 )
             ),
 
-            # Average Features tab
+            # Genre Distribution tab
             tabPanel(
-                "Average Features",
-                div(
-                    class = "plot-center",
-
-                    # Plotting area
-                    mainPanel(plotOutput("artists_plot", height = 700))
-                )
-            ),
-
-            # Mood Quadrants tab
-            tabPanel(
-                "Mood Quadrants",
+                "Genre Distribution",
                 sidebarPanel(
-                    h3("Features:"),
-
-                    # User selection for X and Y axis features
+                    h3("Your Music Genres"),
+                    br(),
+                    p("This shows the distribution of genres across your top artists."),
+                    br(),
                     selectInput(
-                        "x_var",
-                        "X Axis (Horizontal):",
-                        choices  = features,
-                        selected = "energy"
+                        "time_range_genres",
+                        "Time range:",
+                        choices = c(
+                            "Last 4 weeks" = "short_term",
+                            "Last 6 months" = "medium_term",
+                            "All time" = "long_term"
+                        ),
+                        selected = "medium_term"
                     ),
-                    selectInput(
-                        "y_var",
-                        "Y Axis (Vertical):",
-                        choices  = features,
-                        selected = "valence"
+                    br(),
+                    sliderInput(
+                        "top_genres_count",
+                        "Number of top genres to show:",
+                        min = 5,
+                        max = 20,
+                        value = 10,
+                        step = 1
                     )
                 ),
-
-                # Plotting area
-                mainPanel(plotlyOutput("tracks_plot", height = 700))
+                mainPanel(
+                    plotlyOutput("genre_plot", height = 700)
+                )
             ),
 
-            # Playlist Generator tab
+            # Top Tracks tab
+            tabPanel(
+                "Top Tracks",
+                sidebarPanel(
+                    h3("Your Top Tracks"),
+                    br(),
+                    p("These are your most played tracks on Spotify."),
+                    br(),
+                    selectInput(
+                        "time_range_tracks",
+                        "Time range:",
+                        choices = c(
+                            "Last 4 weeks" = "short_term",
+                            "Last 6 months" = "medium_term",
+                            "All time" = "long_term"
+                        ),
+                        selected = "medium_term"
+                    ),
+                    br(),
+                    sliderInput(
+                        "top_tracks_count",
+                        "Number of tracks to show:",
+                        min = 10,
+                        max = 50,
+                        value = 20,
+                        step = 5
+                    )
+                ),
+                mainPanel(
+                    plotlyOutput("top_tracks_plot", height = 700)
+                )
+            ),
+
+            # Playlist Generator tab - redesigned without recommendations API
             tabPanel(
                 "Playlist Generator",
                 fluidPage(
                     fluidRow(
-                        column(3,
-                               h3("Input:"),
-                               br()
+                        column(4,
+                               h3("Create Your Playlist"),
+                               br(),
+                               p("Create a playlist from your top tracks or discover new music from your favorite artists."),
+                               br(),
+
+                               selectInput(
+                                   "playlist_source",
+                                   "Source:",
+                                   choices = c(
+                                       "My Top Tracks" = "top_tracks",
+                                       "Top Tracks from My Top Artists" = "artist_tracks"
+                                   ),
+                                   selected = "top_tracks"
+                               ),
+
+                               conditionalPanel(
+                                   condition = "input.playlist_source == 'top_tracks'",
+                                   selectInput(
+                                       "playlist_time_range",
+                                       "Time range:",
+                                       choices = c(
+                                           "Last 4 weeks" = "short_term",
+                                           "Last 6 months" = "medium_term",
+                                           "All time" = "long_term"
+                                       ),
+                                       selected = "medium_term"
+                                   )
+                               ),
+
+                               conditionalPanel(
+                                   condition = "input.playlist_source == 'artist_tracks'",
+                                   numericInput(
+                                       "num_top_artists",
+                                       "Number of top artists to use (1-10):",
+                                       min = 1,
+                                       max = 10,
+                                       value = 5
+                                   )
+                               ),
+
+                               sliderInput(
+                                   "playlist_track_count",
+                                   "Number of tracks:",
+                                   min = 10,
+                                   max = 50,
+                                   value = 20,
+                                   step = 5
+                               ),
+
+                               textInput("playlist_name", "Playlist Name:"),
+                               br(),
+
+                               actionButton("generate", "Generate Playlist",
+                                          class = "btn-success btn-lg",
+                                          icon = icon("music"))
                         ),
                         column(8,
-                               offset = 1,
-                               h3("Targets:"),
-                               br()
-                        ),
-                        column(3,
-                               # Number of top artists and playlist name
-                               numericInput("num_top_artists", "Number of top artists (1-5):", min = 1, max = 5, value = 5),
-                               textInput("playlist_name", "Playlist Name: "),
                                br(),
-
-                               # Button to generate the playlist
-                               actionButton("generate", "Generate Playlist")
-                        ),
-                        column(4,
-                               offset = 1,
-
-                               # User inputs for target feature values
-                               sliderInput("acousticness", "Acousticness (0-1):", min = 0, max = 1, value = 0.5, step = 0.1),
-                               sliderInput("danceability", "Danceability (0-1):", min = 0, max = 1, value = 0.5, step = 0.1),
-                               sliderInput("energy", "Energy (0-1):", min = 0, max = 1, value = 0.5, step = 0.1)
-                        ),
-                        column(4,
-                               # User inputs for target feature values
-                               sliderInput("instrumentalness", "Instrumentalness (0-1):", min = 0, max = 1, value = 0.5, step = 0.1),
-                               sliderInput("speechiness", "Speechiness (0-1):", min = 0, max = 1, value = 0.5, step = 0.1),
-                               sliderInput("valence", "Valence (0-1):", min = 0, max = 1, value = 0.5, step = 0.1)
-                        ),
-                        column(12,
                                br(),
-
-                               # Display the link to the generated playlist
+                               h4("Preview"),
+                               p("Tracks that will be added to your playlist:"),
+                               br(),
+                               uiOutput("playlist_preview"),
+                               br(),
                                uiOutput("playlist_link")
                         )
                     )

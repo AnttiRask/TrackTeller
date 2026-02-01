@@ -1,14 +1,11 @@
 # Load necessary packages
 library(conflicted)
 library(dplyr)
-library(extrafont)
-library(forcats)
 library(ggplot2)
 library(httr)
 library(plotly)
 library(purrr)
 library(shinydashboard)
-library(spotifyr)
 library(stringr)
 library(tidyr)
 library(waiter)
@@ -16,8 +13,9 @@ library(waiter)
 # Define the server function
 server <- function(input, output, session) {
 
-    # Define the preferred 'filter' function to avoid namespace clashes
+    # Define the preferred functions to avoid namespace clashes
     conflict_prefer("filter", "dplyr")
+    conflict_prefer("validate", "shiny")
 
     # Load helper scripts
     source("scripts/config.R", local = TRUE)
@@ -164,346 +162,442 @@ server <- function(input, output, session) {
         })
     })
 
-    # Define reactive expression to fetch top artists and their track features
-    my_artists_track_features <- reactive({
-        # Require authentication
+    # ============================================
+    # TOP ARTISTS TAB
+    # ============================================
+
+    # Fetch top artists based on time range
+    top_artists_data <- reactive({
         req(is_authenticated())
         token <- get_access_token()
         req(token)
 
+        time_range <- input$time_range_artists
+        if (is.null(time_range)) time_range <- "medium_term"
+
         tryCatch({
-            # Fetch the top artists for the authenticated user using httr directly
             response <- GET(
                 "https://api.spotify.com/v1/me/top/artists",
                 add_headers(Authorization = paste("Bearer", token)),
-                query = list(limit = 20)
+                query = list(limit = 20, time_range = time_range)
             )
 
             if (status_code(response) != 200) {
                 stop(paste("Failed to fetch top artists. Status:", status_code(response)))
             }
 
-            top_artists_data <- content(response, "parsed")
+            data <- content(response, "parsed")
 
-            if (length(top_artists_data$items) == 0) {
-                stop("No top artists found. You may need to listen to more music on Spotify first.")
+            if (length(data$items) == 0) {
+                return(NULL)
             }
 
-            my_artists <- sample(
-                sapply(top_artists_data$items, function(x) x$name),
-                min(2, length(top_artists_data$items))
-            )
+            # Extract artist data
+            artists <- map_dfr(seq_along(data$items), function(i) {
+                artist <- data$items[[i]]
+                tibble(
+                    rank = i,
+                    id = artist$id,
+                    name = artist$name,
+                    popularity = artist$popularity,
+                    followers = artist$followers$total,
+                    genres = paste(artist$genres, collapse = ", "),
+                    image_url = if (length(artist$images) > 0) artist$images[[1]]$url else NA_character_
+                )
+            })
 
-            # Fetch the track features for the top artists
-            # Using spotifyr's get_artist_audio_features (uses client credentials)
-            my_artists_track_features <- map(
-                my_artists,
-                get_artist_audio_features,
-                market = "US"
-            ) %>%
-                bind_rows() %>%
-                select(
-                    artist_id,
-                    artist_name,
-                    track_id,
-                    track_name,
-                    album_name,
-                    album_release_year,
-                    acousticness,
-                    danceability,
-                    energy,
-                    instrumentalness,
-                    liveness,
-                    speechiness,
-                    valence
-                ) %>%
-                as_tibble()
-
-            return(my_artists_track_features)
+            return(artists)
         }, error = function(e) {
             showNotification(paste("Error:", e$message), type = "error", duration = 10)
             return(NULL)
         })
     })
 
-    # Define reactive expression to summarize album track features
-    my_album_summary_stats <- reactive({
+    # Top artists plot
+    output$top_artists_plot <- renderPlotly({
+        req(top_artists_data())
+        data <- top_artists_data()
 
-        my_album_summary_stats <- my_artists_track_features() %>%
-            summarise(
-                across(where(is.numeric), mean),
-                .by    = c(artist_name, album_release_year, album_name)
-            ) %>%
-            filter(
-                str_detect(tolower(album_name), "commentary version") == FALSE,
-                str_detect(tolower(album_name), "deluxe edition") == FALSE,
-                str_detect(tolower(album_name), "track commentary") == FALSE
-            ) %>%
-            group_by(artist_name) %>%
-            arrange(artist_name, album_release_year, album_name) %>%
-            mutate(album_number = row_number(album_release_year)) %>%
-            ungroup() %>%
-            pivot_longer(
-                cols      = !c(artist_name, album_release_year, album_name, album_number),
-                names_to  = "feature",
-                values_to = "score"
-            ) %>%
-            filter(
-                feature %in% features
-            )
+        validate(need(nrow(data) > 0, "No top artists found. Listen to more music on Spotify!"))
 
-        return(my_album_summary_stats)
-
-    })
-
-    # Define reactive expression to provide feature descriptions
-    output$feature_introduction <- renderText({
-
-        # Return feature description based on selected feature
-        if (input$feature == "acousticness") {
-            return('"A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic." -Spotify'
-            )
-        }
-
-        if (input$feature == "danceability") {
-            return('"Danceability describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable." -Spotify')
-        }
-
-        if (input$feature == "energy") {
-            return('"Energy is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy." -Spotify')
-        }
-
-        if (input$feature == "instrumentalness") {
-            return('"Predicts whether a track contains no vocals. "Ooh" and "aah" sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly "vocal". The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0." -Spotify')
-        }
-
-        if (input$feature == "speechiness") {
-            return('"Speechiness detects the presence of spoken words in a track. The more exclusively speech-like the recording (e.g. talk show, audio book, poetry), the closer to 1.0 the attribute value. Values above 0.66 describe tracks that are probably made entirely of spoken words. Values between 0.33 and 0.66 describe tracks that may contain both music and speech, either in sections or layered, including such cases as rap music. Values below 0.33 most likely represent music and other non-speech-like tracks." -Spotify')
-        }
-
-        if (input$feature == "valence") {
-            return('"A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry)." -Spotify')
-        }
-
-    })
-
-    # Define reactive expression to create a summary plot
-    output$summary_plot <- renderPlotly({
-        req(my_album_summary_stats())
-
-        # Create ggplot, then convert it to plotly for interactive plots
-        plot1 <- my_album_summary_stats() %>%
-            mutate(label_text = str_glue("{album_name} ({album_release_year})")) %>%
-            filter(feature == input$feature) %>%
-            ggplot(aes(album_number, score, color = artist_name)) +
-            geom_line(linewidth = 1) +
-            geom_point(aes(text = label_text), size = 2) +
-            labs(
-                color = "Artist",
-                title = str_glue("Average {str_to_title(input$feature)} per Album"),
-                x     = "Album #",
-                y     = NULL
-            ) +
-            scale_color_manual(values = monokai_palette) +
-            theme_spotify()
-
-        plot1 <- ggplotly(plot1, tooltip = "text")
-
-        plot1 <- plot1 %>%
-            plotly::layout(
-                legend = list(
-                    font = list(
-                        color = spotify_colors$dark_green,
-                        font  = "Gotham",
-                        size  = 20
-                    ),
-                    x = 1.05,
-                    y = 0.5
-                ),
-                xaxis = list(
-                    autorange = TRUE
-                )
-            )
-
-        return(plot1)
-
-    })
-
-    # Define reactive expression to create an artist feature plot
-    output$artists_plot <- renderPlot({
-        req(my_artists_track_features())
-
-        # Create ggplot to show average values of different features per artist
-        my_artists_track_features() %>%
-            select(
-                -c(
-                    track_name,
-                    album_release_year,
-                    album_name,
-                    track_id,
-                    artist_id
-                )
-            ) %>%
-            pivot_longer(
-                cols = !c(artist_name),
-                names_to        = "feature",
-                values_to       = "score",
-                names_transform = list(feature = as.factor)
-            ) %>%
-            filter(feature %in% features) %>%
-            ggplot(aes(feature %>% str_to_title() %>% fct_rev(), score, color = artist_name)) +
-            geom_boxplot(
-                fill      = spotify_colors$black,
-                linewidth = 1
-            ) +
+        # Create horizontal bar chart
+        plot <- data %>%
+            mutate(name = factor(name, levels = rev(name))) %>%
+            ggplot(aes(x = name, y = popularity,
+                      text = paste0(name, "\n",
+                                   "Popularity: ", popularity, "\n",
+                                   "Followers: ", format(followers, big.mark = ","), "\n",
+                                   "Genres: ", genres))) +
+            geom_col(fill = spotify_colors$dark_green, alpha = 0.8) +
             coord_flip() +
             labs(
-                color = "Artist",
-                title = "Average Values (0-1) of Different Features",
-                x     = NULL,
-                y     = NULL
+                title = "Your Top 20 Artists",
+                x = NULL,
+                y = "Popularity Score (0-100)"
             ) +
-            scale_color_manual(values = monokai_palette) +
             theme_spotify() +
             theme(
                 panel.grid.major.x = element_line(
-                    color     = spotify_colors$white,
+                    color = spotify_colors$white,
                     linewidth = 0.4,
-                    linetype  = 2
+                    linetype = 2
                 ),
-                panel.grid.major.y = element_blank(),
-                panel.grid.minor   = element_blank()
+                panel.grid.major.y = element_blank()
             )
-    })
 
-    # Update available y_var choices when x_var changes
-    observe({
-        if (!is.null(input$x_var)) {
-            updateSelectInput(
-                session, "y_var",
-                choices  = setdiff(features, input$x_var),
-                selected = "valence"
-            )
-        }
-    })
-
-    # Define reactive expression to create mood quadrants plot
-    output$tracks_plot <- renderPlotly({
-        req(input$x_var, input$y_var)
-        req(my_artists_track_features())
-
-        top_tracks <- bind_rows(
-            map(unique(my_artists_track_features()$artist_id), get_artist_top_tracks)
-        )
-
-        # Create ggplot, then convert it to plotly for interactive plots
-        plot2 <- top_tracks %>%
-            select(id, popularity) %>%
-            right_join(
-                my_artists_track_features(),
-                by = join_by(id == track_id)
-            ) %>%
-            mutate(
-                rank_top_song = row_number(desc(popularity)),
-                .by = artist_name
-            ) %>%
-            mutate(
-                label_text = str_glue(
-                    "{track_name}
-                    from {album_name} ({album_release_year})
-                    {str_to_title(input$x_var)}: {round(.data[[input$x_var]], 2)}
-                    {str_to_title(input$y_var)}: {round(.data[[input$y_var]], 2)}"
-                )
-            ) %>%
-            ggplot(aes(.data[[input$x_var]], .data[[input$y_var]], color = artist_name)) +
-            geom_point(aes(text = label_text), alpha = 0.9) +
-            geom_hline(yintercept = 0.5,  color = "grey", linetype = "dashed") +
-            geom_vline(xintercept = 0.5,  color = "grey", linetype = "dashed") +
-            labs(
-                x     = str_to_title(input$x_var),
-                y     = str_to_title(input$y_var),
-                color = "Artist",
-                title = "Mood Quadrants"
-            ) +
-            scale_color_manual(values = monokai_palette) +
-            theme_spotify() +
-            theme(panel.grid.major = element_blank())
-
-        plot2 <- ggplotly(plot2, tooltip = "text")
-
-        plot2 <- plot2 %>%
+        ggplotly(plot, tooltip = "text") %>%
             plotly::layout(
-                legend = list(
-                    font        = list(
-                        color = spotify_colors$dark_green,
-                        font  = "Gotham",
-                        size  = 20
-                    ),
-                    x = 1.05,
-                    y = 0.5
-                ),
-                xaxis  = list(
-                    range    = c(0, 1),
-                    showline = FALSE
-                ),
-                yaxis  = list(
-                    range    = c(0, 1),
-                    showline = FALSE
-                )
+                hoverlabel = list(bgcolor = spotify_colors$black)
             )
-
-        return(plot2)
     })
 
-    # Listen for a click event on the 'generate' button to generate a playlist
-    observeEvent(input$generate, {
-        # Require authentication
+    # ============================================
+    # GENRE DISTRIBUTION TAB
+    # ============================================
+
+    # Fetch top artists for genre analysis
+    genre_data <- reactive({
         req(is_authenticated())
         token <- get_access_token()
         req(token)
+
+        time_range <- input$time_range_genres
+        if (is.null(time_range)) time_range <- "medium_term"
+
+        tryCatch({
+            response <- GET(
+                "https://api.spotify.com/v1/me/top/artists",
+                add_headers(Authorization = paste("Bearer", token)),
+                query = list(limit = 50, time_range = time_range)
+            )
+
+            if (status_code(response) != 200) {
+                stop(paste("Failed to fetch artists for genres. Status:", status_code(response)))
+            }
+
+            data <- content(response, "parsed")
+
+            if (length(data$items) == 0) {
+                return(NULL)
+            }
+
+            # Extract and count genres
+            all_genres <- unlist(lapply(data$items, function(artist) artist$genres))
+
+            if (length(all_genres) == 0) {
+                return(NULL)
+            }
+
+            genre_counts <- as.data.frame(table(all_genres), stringsAsFactors = FALSE)
+            names(genre_counts) <- c("genre", "count")
+            genre_counts <- genre_counts %>%
+                arrange(desc(count)) %>%
+                mutate(percentage = round(count / sum(count) * 100, 1))
+
+            return(genre_counts)
+        }, error = function(e) {
+            showNotification(paste("Error:", e$message), type = "error", duration = 10)
+            return(NULL)
+        })
+    })
+
+    # Genre distribution plot
+    output$genre_plot <- renderPlotly({
+        req(genre_data())
+        data <- genre_data()
+
+        validate(need(nrow(data) > 0, "No genre data available."))
+
+        top_count <- input$top_genres_count
+        if (is.null(top_count)) top_count <- 10
+
+        # Take top N genres
+        data <- head(data, top_count)
+
+        # Create horizontal bar chart
+        plot <- data %>%
+            mutate(genre = factor(genre, levels = rev(genre))) %>%
+            ggplot(aes(x = genre, y = count,
+                      text = paste0(genre, "\n",
+                                   "Artists: ", count, "\n",
+                                   "Percentage: ", percentage, "%"))) +
+            geom_col(fill = monokai_palette[1:nrow(data)], alpha = 0.8) +
+            coord_flip() +
+            labs(
+                title = paste("Your Top", top_count, "Genres"),
+                x = NULL,
+                y = "Number of Artists"
+            ) +
+            theme_spotify() +
+            theme(
+                panel.grid.major.x = element_line(
+                    color = spotify_colors$white,
+                    linewidth = 0.4,
+                    linetype = 2
+                ),
+                panel.grid.major.y = element_blank()
+            )
+
+        ggplotly(plot, tooltip = "text") %>%
+            plotly::layout(
+                hoverlabel = list(bgcolor = spotify_colors$black)
+            )
+    })
+
+    # ============================================
+    # TOP TRACKS TAB
+    # ============================================
+
+    # Fetch top tracks based on time range
+    top_tracks_data <- reactive({
+        req(is_authenticated())
+        token <- get_access_token()
+        req(token)
+
+        time_range <- input$time_range_tracks
+        if (is.null(time_range)) time_range <- "medium_term"
+
+        limit <- input$top_tracks_count
+        if (is.null(limit)) limit <- 20
+
+        tryCatch({
+            response <- GET(
+                "https://api.spotify.com/v1/me/top/tracks",
+                add_headers(Authorization = paste("Bearer", token)),
+                query = list(limit = limit, time_range = time_range)
+            )
+
+            if (status_code(response) != 200) {
+                stop(paste("Failed to fetch top tracks. Status:", status_code(response)))
+            }
+
+            data <- content(response, "parsed")
+
+            if (length(data$items) == 0) {
+                return(NULL)
+            }
+
+            # Extract track data
+            tracks <- map_dfr(seq_along(data$items), function(i) {
+                track <- data$items[[i]]
+                tibble(
+                    rank = i,
+                    id = track$id,
+                    name = track$name,
+                    artist = paste(sapply(track$artists, function(a) a$name), collapse = ", "),
+                    album = track$album$name,
+                    popularity = track$popularity,
+                    duration_ms = track$duration_ms
+                )
+            })
+
+            return(tracks)
+        }, error = function(e) {
+            showNotification(paste("Error:", e$message), type = "error", duration = 10)
+            return(NULL)
+        })
+    })
+
+    # Top tracks plot
+    output$top_tracks_plot <- renderPlotly({
+        req(top_tracks_data())
+        data <- top_tracks_data()
+
+        validate(need(nrow(data) > 0, "No top tracks found. Listen to more music on Spotify!"))
+
+        # Create horizontal bar chart showing track ranking with popularity
+        plot <- data %>%
+            mutate(
+                label = paste0(rank, ". ", name),
+                label = factor(label, levels = rev(label)),
+                duration_min = round(duration_ms / 60000, 1)
+            ) %>%
+            ggplot(aes(x = label, y = popularity,
+                      text = paste0("#", rank, " ", name, "\n",
+                                   "Artist: ", artist, "\n",
+                                   "Album: ", album, "\n",
+                                   "Popularity: ", popularity, "\n",
+                                   "Duration: ", duration_min, " min"))) +
+            geom_col(fill = spotify_colors$dark_green, alpha = 0.8) +
+            coord_flip() +
+            labs(
+                title = "Your Top Tracks",
+                x = NULL,
+                y = "Popularity Score (0-100)"
+            ) +
+            theme_spotify() +
+            theme(
+                panel.grid.major.x = element_line(
+                    color = spotify_colors$white,
+                    linewidth = 0.4,
+                    linetype = 2
+                ),
+                panel.grid.major.y = element_blank(),
+                axis.text.y = element_text(size = rel(0.7))
+            )
+
+        ggplotly(plot, tooltip = "text") %>%
+            plotly::layout(
+                hoverlabel = list(bgcolor = spotify_colors$black)
+            )
+    })
+
+    # ============================================
+    # PLAYLIST GENERATOR TAB
+    # ============================================
+
+    # Store selected tracks for playlist
+    playlist_tracks <- reactiveVal(NULL)
+
+    # Update playlist preview when inputs change
+    observe({
+        req(is_authenticated())
+        token <- get_access_token()
+        req(token)
+
+        source <- input$playlist_source
+        if (is.null(source)) source <- "top_tracks"
+
+        track_count <- input$playlist_track_count
+        if (is.null(track_count)) track_count <- 20
+
+        tryCatch({
+            if (source == "top_tracks") {
+                # Get user's top tracks
+                time_range <- input$playlist_time_range
+                if (is.null(time_range)) time_range <- "medium_term"
+
+                response <- GET(
+                    "https://api.spotify.com/v1/me/top/tracks",
+                    add_headers(Authorization = paste("Bearer", token)),
+                    query = list(limit = track_count, time_range = time_range)
+                )
+
+                if (status_code(response) != 200) {
+                    playlist_tracks(NULL)
+                    return()
+                }
+
+                data <- content(response, "parsed")
+                tracks <- map_dfr(data$items, function(track) {
+                    tibble(
+                        id = track$id,
+                        name = track$name,
+                        artist = paste(sapply(track$artists, function(a) a$name), collapse = ", ")
+                    )
+                })
+
+                playlist_tracks(tracks)
+
+            } else if (source == "artist_tracks") {
+                # Get top tracks from user's top artists
+                num_artists <- input$num_top_artists
+                if (is.null(num_artists)) num_artists <- 5
+
+                # First get top artists
+                artists_response <- GET(
+                    "https://api.spotify.com/v1/me/top/artists",
+                    add_headers(Authorization = paste("Bearer", token)),
+                    query = list(limit = num_artists, time_range = "medium_term")
+                )
+
+                if (status_code(artists_response) != 200) {
+                    playlist_tracks(NULL)
+                    return()
+                }
+
+                artists_data <- content(artists_response, "parsed")
+
+                # Get top tracks for each artist
+                all_tracks <- list()
+                tracks_per_artist <- ceiling(track_count / num_artists)
+
+                for (artist in artists_data$items) {
+                    tracks_response <- GET(
+                        paste0("https://api.spotify.com/v1/artists/", artist$id, "/top-tracks"),
+                        add_headers(Authorization = paste("Bearer", token)),
+                        query = list(market = "US")
+                    )
+
+                    if (status_code(tracks_response) == 200) {
+                        tracks_data <- content(tracks_response, "parsed")
+                        for (track in head(tracks_data$tracks, tracks_per_artist)) {
+                            all_tracks[[length(all_tracks) + 1]] <- tibble(
+                                id = track$id,
+                                name = track$name,
+                                artist = paste(sapply(track$artists, function(a) a$name), collapse = ", ")
+                            )
+                        }
+                    }
+                }
+
+                if (length(all_tracks) > 0) {
+                    tracks <- bind_rows(all_tracks) %>%
+                        distinct(id, .keep_all = TRUE) %>%
+                        head(track_count)
+                    playlist_tracks(tracks)
+                } else {
+                    playlist_tracks(NULL)
+                }
+            }
+        }, error = function(e) {
+            message("Error fetching playlist tracks: ", e$message)
+            playlist_tracks(NULL)
+        })
+    })
+
+    # Render playlist preview
+    output$playlist_preview <- renderUI({
+        tracks <- playlist_tracks()
+
+        if (is.null(tracks) || nrow(tracks) == 0) {
+            return(p(class = "text-muted", "Loading track preview..."))
+        }
+
+        # Create a list of tracks
+        track_list <- lapply(seq_len(nrow(tracks)), function(i) {
+            tags$div(
+                class = "track-item",
+                style = "padding: 5px 0; border-bottom: 1px solid #333;",
+                tags$span(style = "color: #1DB954;", paste0(i, ". ")),
+                tags$span(style = "color: #fff;", tracks$name[i]),
+                tags$span(style = "color: #b3b3b3;", paste0(" - ", tracks$artist[i]))
+            )
+        })
+
+        tags$div(
+            style = "max-height: 400px; overflow-y: auto;",
+            track_list
+        )
+    })
+
+    # Generate playlist when button is clicked
+    observeEvent(input$generate, {
+        req(is_authenticated())
+        token <- get_access_token()
+        req(token)
+
+        tracks <- playlist_tracks()
+
+        if (is.null(tracks) || nrow(tracks) == 0) {
+            output$playlist_link <- renderUI({
+                p(class = "text-danger", "No tracks available to create playlist.")
+            })
+            return()
+        }
 
         # Get user ID from session
         user_id <- session$userData$user_id
         req(user_id)
 
-        # Get top artists for the authenticated user
-        response <- GET(
-            "https://api.spotify.com/v1/me/top/artists",
-            add_headers(Authorization = paste("Bearer", token)),
-            query = list(
-                limit = input$num_top_artists,
-                time_range = "medium_term"
-            )
-        )
-
-        if (status_code(response) != 200) {
-            output$playlist_link <- renderUI({
-                p(class = "text-danger", "Failed to get your top artists. Please try again.")
-            })
-            return()
-        }
-
-        top_artists_data <- content(response, "parsed")
-        artist_ids <- sapply(top_artists_data$items, function(x) x$id)
-
-        # Get song recommendations based on user input and top artists
-        new_playlist <- get_recommendations(
-            seed_artists            = head(artist_ids, input$num_top_artists),
-            target_acousticness     = input$acousticness,
-            target_danceability     = input$danceability,
-            target_energy           = input$energy,
-            target_instrumentalness = input$instrumentalness,
-            target_speechiness      = input$speechiness,
-            target_valence          = input$valence
-        )
-
-        # Create a new playlist for the authenticated user
+        # Create playlist name
         playlist_name <- if (nzchar(input$playlist_name)) {
             str_glue("{input$playlist_name} ({Sys.Date()})")
         } else {
-            str_glue("Generated Playlist ({Sys.Date()})")
+            str_glue("My Top Tracks ({Sys.Date()})")
         }
 
+        # Create the playlist
         create_response <- POST(
             paste0("https://api.spotify.com/v1/users/", user_id, "/playlists"),
             add_headers(
@@ -519,6 +613,9 @@ server <- function(input, output, session) {
         )
 
         if (status_code(create_response) != 201) {
+            error_content <- content(create_response, "text")
+            message("Failed to create playlist. Status: ", status_code(create_response))
+            message("Response: ", error_content)
             output$playlist_link <- renderUI({
                 p(class = "text-danger", "Failed to create playlist. Please try again.")
             })
@@ -528,8 +625,8 @@ server <- function(input, output, session) {
         playlist_data <- content(create_response, "parsed")
         playlist_id <- playlist_data$id
 
-        # Add recommended songs to the created playlist
-        track_uris <- paste0("spotify:track:", new_playlist$id)
+        # Add tracks to the playlist
+        track_uris <- paste0("spotify:track:", tracks$id)
 
         add_response <- POST(
             paste0("https://api.spotify.com/v1/playlists/", playlist_id, "/tracks"),
@@ -541,10 +638,25 @@ server <- function(input, output, session) {
             encode = "json"
         )
 
-        # Render a UI element to display the playlist link
+        if (status_code(add_response) != 201 && status_code(add_response) != 200) {
+            output$playlist_link <- renderUI({
+                p(class = "text-warning",
+                  "Playlist created but failed to add some tracks. ",
+                  a("Open playlist", href = paste0("https://open.spotify.com/playlist/", playlist_id),
+                    target = "_blank"))
+            })
+            return()
+        }
+
+        # Success!
         output$playlist_link <- renderUI({
-            playlist_link <- str_glue("https://open.spotify.com/playlist/{playlist_id}")
-            p("The playlist was created. Here is the ", a("link.", href = playlist_link, target = "_blank"))
+            playlist_link <- paste0("https://open.spotify.com/playlist/", playlist_id)
+            div(
+                class = "text-success",
+                p(icon("check-circle"), " Playlist created successfully!"),
+                p("Open your new playlist: ",
+                  a(playlist_name, href = playlist_link, target = "_blank", class = "btn btn-success"))
+            )
         })
     })
 }
