@@ -101,31 +101,75 @@ uiFunc <- function(req) {
                 sidebarPanel(
                     h3("Your Top Artists"),
                     br(),
-                    p("This shows your top 20 artists from Spotify, ranked by how much you listen to them."),
+                    p("Your top artists from Spotify, ranked by how much you listen to them."),
                     br(),
                     selectInput(
-                        "time_range_artists",
+                        "time_range",
                         "Time range:",
                         choices = c(
                             "Last 4 weeks" = "short_term",
                             "Last 6 months" = "medium_term",
                             "All time" = "long_term"
                         ),
-                        selected = "medium_term"
+                        selected = "short_term"
                     ),
                     br(),
-                    p("Click on an artist bar to see more details.")
+                    sliderInput(
+                        "top_artists_count",
+                        "Number of artists to show:",
+                        min = 10,
+                        max = 50,
+                        value = 20,
+                        step = 5
+                    ),
+                    br(),
+                    p(class = "text-muted small",
+                      "Note: Spotify only provides these three time ranges. ",
+                      "Custom date ranges are not available through the API.")
                 ),
                 mainPanel(
-                    plotlyOutput("top_artists_plot", height = 700)
+                    uiOutput("top_artists_list")
                 )
             ),
 
-            # Genre Distribution tab
+            # Top Tracks tab - moved next to Top Artists
             tabPanel(
-                "Genre Distribution",
+                "Top Tracks",
                 sidebarPanel(
-                    h3("Your Music Genres"),
+                    h3("Your Top Tracks"),
+                    br(),
+                    p("These are your most played tracks on Spotify, ranked by listening frequency."),
+                    br(),
+                    selectInput(
+                        "time_range_tracks",
+                        "Time range:",
+                        choices = c(
+                            "Last 4 weeks" = "short_term",
+                            "Last 6 months" = "medium_term",
+                            "All time" = "long_term"
+                        ),
+                        selected = "short_term"
+                    ),
+                    br(),
+                    sliderInput(
+                        "top_tracks_count",
+                        "Number of tracks to show:",
+                        min = 10,
+                        max = 50,
+                        value = 20,
+                        step = 5
+                    )
+                ),
+                mainPanel(
+                    uiOutput("top_tracks_list")
+                )
+            ),
+
+            # Top Genres tab
+            tabPanel(
+                "Top Genres",
+                sidebarPanel(
+                    h3("Your Top Genres"),
                     br(),
                     p("This shows the distribution of genres across your top artists."),
                     br(),
@@ -137,7 +181,7 @@ uiFunc <- function(req) {
                             "Last 6 months" = "medium_term",
                             "All time" = "long_term"
                         ),
-                        selected = "medium_term"
+                        selected = "short_term"
                     ),
                     br(),
                     sliderInput(
@@ -154,40 +198,7 @@ uiFunc <- function(req) {
                 )
             ),
 
-            # Top Tracks tab
-            tabPanel(
-                "Top Tracks",
-                sidebarPanel(
-                    h3("Your Top Tracks"),
-                    br(),
-                    p("These are your most played tracks on Spotify."),
-                    br(),
-                    selectInput(
-                        "time_range_tracks",
-                        "Time range:",
-                        choices = c(
-                            "Last 4 weeks" = "short_term",
-                            "Last 6 months" = "medium_term",
-                            "All time" = "long_term"
-                        ),
-                        selected = "medium_term"
-                    ),
-                    br(),
-                    sliderInput(
-                        "top_tracks_count",
-                        "Number of tracks to show:",
-                        min = 10,
-                        max = 50,
-                        value = 20,
-                        step = 5
-                    )
-                ),
-                mainPanel(
-                    plotlyOutput("top_tracks_plot", height = 700)
-                )
-            ),
-
-            # Playlist Generator tab - redesigned without recommendations API
+            # Playlist Generator tab
             tabPanel(
                 "Playlist Generator",
                 fluidPage(
@@ -203,13 +214,14 @@ uiFunc <- function(req) {
                                    "Source:",
                                    choices = c(
                                        "My Top Tracks" = "top_tracks",
-                                       "Top Tracks from My Top Artists" = "artist_tracks"
+                                       "Top Tracks from My Top Artists" = "artist_tracks",
+                                       "Recently Played" = "recently_played"
                                    ),
                                    selected = "top_tracks"
                                ),
 
                                conditionalPanel(
-                                   condition = "input.playlist_source == 'top_tracks'",
+                                   condition = "input.playlist_source != 'recently_played'",
                                    selectInput(
                                        "playlist_time_range",
                                        "Time range:",
@@ -218,28 +230,44 @@ uiFunc <- function(req) {
                                            "Last 6 months" = "medium_term",
                                            "All time" = "long_term"
                                        ),
-                                       selected = "medium_term"
+                                       selected = "short_term"
+                                   )
+                               ),
+
+                               conditionalPanel(
+                                   condition = "input.playlist_source == 'top_tracks'",
+                                   sliderInput(
+                                       "playlist_track_count",
+                                       "Number of tracks:",
+                                       min = 10,
+                                       max = 50,
+                                       value = 20,
+                                       step = 5
                                    )
                                ),
 
                                conditionalPanel(
                                    condition = "input.playlist_source == 'artist_tracks'",
-                                   numericInput(
+                                   sliderInput(
                                        "num_top_artists",
-                                       "Number of top artists to use (1-10):",
-                                       min = 1,
-                                       max = 10,
-                                       value = 5
+                                       "Number of top artists to use:",
+                                       min = 10,
+                                       max = 50,
+                                       value = 20,
+                                       step = 5
                                    )
                                ),
 
-                               sliderInput(
-                                   "playlist_track_count",
-                                   "Number of tracks:",
-                                   min = 10,
-                                   max = 50,
-                                   value = 20,
-                                   step = 5
+                               conditionalPanel(
+                                   condition = "input.playlist_source == 'recently_played'",
+                                   sliderInput(
+                                       "recent_tracks_count",
+                                       "Number of tracks to use:",
+                                       min = 10,
+                                       max = 50,
+                                       value = 20,
+                                       step = 5
+                                   )
                                ),
 
                                textInput("playlist_name", "Playlist Name:"),

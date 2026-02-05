@@ -17,6 +17,7 @@ REDIRECT_URI <- APP_URL
 # Spotify OAuth scopes needed by this app
 SPOTIFY_SCOPES <- c(
     "user-top-read",
+    "user-read-recently-played",
     "playlist-modify-public"
 )
 
