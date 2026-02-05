@@ -273,6 +273,18 @@ uiFunc <- function(req) {
                                textInput("playlist_name", "Playlist Name:"),
                                br(),
 
+                               radioButtons(
+                                   "playlist_visibility",
+                                   "Visibility:",
+                                   choices = c(
+                                       "Public" = "public",
+                                       "Private" = "private"
+                                   ),
+                                   selected = "public",
+                                   inline = TRUE
+                               ),
+                               br(),
+
                                actionButton("generate", "Generate Playlist",
                                           class = "btn-success btn-lg",
                                           icon = icon("music"))

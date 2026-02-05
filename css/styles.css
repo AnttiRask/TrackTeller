@@ -23,6 +23,23 @@ p {
     color: #1DB954 !important;
 }
 
+/* Override Bootstrap success colors with Spotify green */
+.btn-success {
+    background-color: #1DB954 !important;
+    border-color: #1DB954 !important;
+}
+
+.btn-success:hover,
+.btn-success:focus,
+.btn-success:active {
+    background-color: #1ed760 !important;
+    border-color: #1ed760 !important;
+}
+
+.text-success {
+    color: #1DB954 !important;
+}
+
 /* Main */
 .container-fluid {
     background-color: #191414;

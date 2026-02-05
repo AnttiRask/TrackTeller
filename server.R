@@ -872,6 +872,9 @@ server <- function(input, output, session) {
             str_glue("{default_name} ({Sys.Date()})")
         }
 
+        # Get playlist visibility setting
+        is_public <- input$playlist_visibility == "public"
+
         # Create the playlist
         create_response <- POST(
             paste0("https://api.spotify.com/v1/users/", user_id, "/playlists"),
@@ -882,7 +885,7 @@ server <- function(input, output, session) {
             body = list(
                 name = playlist_name,
                 description = "Generated with R!",
-                public = TRUE
+                public = is_public
             ),
             encode = "json"
         )
