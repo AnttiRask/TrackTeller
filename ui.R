@@ -220,15 +220,13 @@ uiFunc <- function(req) {
                 sidebarPanel(
                     h3("Your Playlists"),
                     br(),
-                    p("Browse your Spotify playlists."),
+                    p("Browse all your Spotify playlists, filtered by first letter."),
                     br(),
-                    sliderInput(
-                        "playlists_count",
-                        "Number of playlists to show:",
-                        min = 10,
-                        max = 50,
-                        value = 20,
-                        step = 5
+                    selectInput(
+                        "playlist_letter",
+                        "Filter by first letter:",
+                        choices = c("Loading..." = ""),
+                        selected = ""
                     )
                 ),
                 mainPanel(

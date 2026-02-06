@@ -634,37 +634,45 @@ server <- function(input, output, session) {
     # MY PLAYLISTS TAB
     # ============================================
 
-    # Fetch user's playlists
-    user_playlists_data <- reactive({
+    # Fetch ALL user's playlists (paginated)
+    all_playlists_data <- reactive({
         req(is_authenticated())
         token <- get_access_token()
         req(token)
 
-        limit <- input$playlists_count
-        if (is.null(limit)) limit <- 20
-
         tryCatch({
-            response <- GET(
-                "https://api.spotify.com/v1/me/playlists",
-                add_headers(Authorization = paste("Bearer", token)),
-                query = list(limit = limit)
-            )
+            all_items <- list()
+            offset <- 0
+            batch_size <- 50
 
-            if (status_code(response) != 200) {
-                stop(paste("Failed to fetch playlists. Status:", status_code(response)))
+            repeat {
+                response <- GET(
+                    "https://api.spotify.com/v1/me/playlists",
+                    add_headers(Authorization = paste("Bearer", token)),
+                    query = list(limit = batch_size, offset = offset)
+                )
+
+                if (status_code(response) != 200) {
+                    stop(paste("Failed to fetch playlists. Status:", status_code(response)))
+                }
+
+                data <- content(response, "parsed")
+                items <- data$items
+
+                if (length(items) == 0) break
+
+                all_items <- c(all_items, items)
+                offset <- offset + batch_size
+
+                if (length(items) < batch_size) break
             }
 
-            data <- content(response, "parsed")
-
-            if (length(data$items) == 0) {
-                return(NULL)
-            }
+            if (length(all_items) == 0) return(NULL)
 
             # Extract playlist data
-            playlists <- map_dfr(seq_along(data$items), function(i) {
-                playlist <- data$items[[i]]
+            playlists <- map_dfr(seq_along(all_items), function(i) {
+                playlist <- all_items[[i]]
                 tibble(
-                    rank = i,
                     id = playlist$id,
                     name = playlist$name,
                     description = if (!is.null(playlist$description)) playlist$description else "",
@@ -676,6 +684,9 @@ server <- function(input, output, session) {
                 )
             })
 
+            # Sort alphabetically (case-insensitive)
+            playlists <- playlists %>% arrange(tolower(name))
+
             return(playlists)
         }, error = function(e) {
             showNotification(paste("Error:", e$message), type = "error", duration = 10)
@@ -683,12 +694,58 @@ server <- function(input, output, session) {
         })
     })
 
+    # Update letter filter choices based on available playlists
+    observe({
+        data <- all_playlists_data()
+        req(data)
+
+        # Get first character of each playlist name
+        first_chars <- toupper(substr(data$name, 1, 1))
+
+        # Build available choices: "#" for non-alpha, then A-Z
+        available <- character(0)
+
+        has_non_alpha <- any(!grepl("^[A-Za-z]", first_chars))
+        if (has_non_alpha) available <- c(available, "#" = "#")
+
+        for (letter in LETTERS) {
+            if (any(first_chars == letter)) {
+                available <- c(available, setNames(letter, letter))
+            }
+        }
+
+        # Default to first available choice
+        updateSelectInput(session, "playlist_letter",
+            choices = available,
+            selected = available[[1]]
+        )
+    })
+
+    # Filter playlists by selected letter
+    filtered_playlists_data <- reactive({
+        data <- all_playlists_data()
+        req(data)
+
+        letter <- input$playlist_letter
+        if (is.null(letter) || length(letter) == 0) return(head(data, 0))
+
+        if (letter == "#") {
+            data %>% filter(!grepl("^[A-Za-z]", name))
+        } else {
+            data %>% filter(toupper(substr(name, 1, 1)) == letter)
+        }
+    })
+
     # Render user's playlists
     output$user_playlists_list <- renderUI({
-        req(user_playlists_data())
-        data <- user_playlists_data()
+        all_data <- all_playlists_data()
+        req(all_data)
+        data <- filtered_playlists_data()
 
-        validate(need(nrow(data) > 0, "No playlists found."))
+        validate(need(nrow(data) > 0, "No playlists found for this letter."))
+
+        total_count <- nrow(all_data)
+        filtered_count <- nrow(data)
 
         # Create a list of playlist cards
         playlist_cards <- lapply(seq_len(nrow(data)), function(i) {
@@ -700,20 +757,15 @@ server <- function(input, output, session) {
                     "margin-bottom: 8px; background: #282828; border-radius: 8px; ",
                     "transition: background 0.2s; cursor: default;"
                 ),
-                # Rank number
-                tags$div(
-                    style = "color: #1DB954; font-size: 1.4em; font-weight: bold; width: 40px; text-align: center;",
-                    paste0("#", playlist$rank)
-                ),
                 # Playlist image (if available)
                 if (!is.na(playlist$image_url)) {
                     tags$img(
                         src = playlist$image_url,
-                        style = "width: 50px; height: 50px; border-radius: 4px; margin-left: 10px; object-fit: cover;"
+                        style = "width: 50px; height: 50px; border-radius: 4px; object-fit: cover;"
                     )
                 } else {
                     tags$div(
-                        style = "width: 50px; height: 50px; border-radius: 4px; margin-left: 10px; background: #333; display: flex; align-items: center; justify-content: center;",
+                        style = "width: 50px; height: 50px; border-radius: 4px; background: #333; display: flex; align-items: center; justify-content: center;",
                         icon("music", style = "color: #666;")
                     )
                 },
@@ -757,8 +809,14 @@ server <- function(input, output, session) {
         })
 
         tags$div(
-            style = "max-height: 700px; overflow-y: auto; padding-right: 10px;",
-            playlist_cards
+            tags$p(
+                style = "color: #b3b3b3; margin-bottom: 10px;",
+                paste0("Showing ", filtered_count, " of ", total_count, " playlists")
+            ),
+            tags$div(
+                style = "max-height: 700px; overflow-y: auto; padding-right: 10px;",
+                playlist_cards
+            )
         )
     })
 
