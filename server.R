@@ -872,17 +872,12 @@ server <- function(input, output, session) {
             str_glue("{default_name} ({Sys.Date()})")
         }
 
-        # Get playlist visibility setting (controls profile visibility only)
-        # Note: Spotify API's "public" setting only affects whether playlist
-        # appears on user's profile, not actual access control
-        is_public <- input$playlist_visibility == "public"
-
         # Create the playlist body
         playlist_body <- jsonlite::toJSON(
             list(
                 name = as.character(playlist_name),
                 description = "Generated with R!",
-                public = is_public
+                public = TRUE
             ),
             auto_unbox = TRUE
         )
