@@ -105,21 +105,23 @@ sudo docker compose up --build
 4. Select "Web API" under APIs
 5. Copy Client ID and Client Secret to `.env`
 
-### Production Deployment
+### Production Deployment (Google Cloud Run)
 
-Deploy to any Docker-compatible platform:
-- DigitalOcean App Platform
-- AWS ECS / Fargate
-- Google Cloud Run
-- Azure Container Instances
+See [DEPLOY.md](DEPLOY.md) for detailed instructions.
+
+Quick deploy:
+
+```bash
+./deploy.sh
+```
 
 Required environment variables:
+
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
-- `APP_URL` (your HTTPS production URL)
-- `SHINY_ENV=production`
+- `APP_URL` (your Cloud Run HTTPS URL)
 
-**Important:** Spotify requires HTTPS for production redirect URIs.
+**Important:** Add your Cloud Run URL to Spotify Developer Dashboard redirect URIs.
 
 ---
 
