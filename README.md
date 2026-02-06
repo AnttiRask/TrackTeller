@@ -1,128 +1,131 @@
-# Spotify: Favorite Artist Analyzer and Playlist Generator :radio:
+# 🎧 TrackTeller
 
-This app uses the Spotify API to...
+**TrackTeller** is a Shiny web app that connects to your Spotify account to visualize your listening habits and create playlists from your personal data.
 
-* fetch 2 random artists from users' top 20 artists
-* visualize and compare
-    * average features per album
-    * average features per artist
-    * mood quadrants (scatterplot between two features)
-* create new playlists
-    * using user's top (1-5) artists as seed
-    * choosing features (0-1) as targets
+## 🔍 Features
 
+- 🎤 View your top artists ranked by listening frequency
+- 🎵 Browse your most played tracks with Spotify links
+- 🎼 Explore genre distribution across your music taste
+- 📋 Browse your existing Spotify playlists
+- ✨ Create new playlists from your top tracks, favorite artists, or recently played
+- 📱 Mobile-responsive design
+- 🔒 Secure OAuth with Spotify (no credentials stored)
 
-## Quick Start (Online Version)
+## 📸 Screenshot
 
-Users simply click "Login with Spotify" - no developer credentials needed!
+![TrackTeller screenshot](img/screenshot.png)
 
-### For Developers: Deploying the App
+## 🚀 Live App
 
-#### Prerequisites
+👉 [Try it live on Google Cloud Run](https://trackteller-app-4nyb7sykxa-lz.a.run.app)
 
-1. **Create a Spotify Developer App:**
-   - Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/)
-   - Create a new app
-   - Add your deployment URL as a Redirect URI (e.g., `https://your-app.example.com/callback`)
-   - Note your Client ID and Client Secret
+## 🛠️ Project Structure
 
-2. **Set up environment variables:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Spotify credentials and app URL
-   ```
-
-#### Deploy with Docker
-
-```bash
-# Build and run
-docker-compose up --build
-
-# The app will be available at http://localhost:8080
+```text
+TrackTeller/
+├── ui.R                     # UI definition (5 tabs + auth)
+├── server.R                 # Server logic (Spotify API + visualizations)
+├── run.R                    # App entry point
+├── scripts/
+│   ├── spotify_oauth.R      # Custom OAuth 2.0 implementation
+│   └── config.R             # Environment-based configuration
+├── css/
+│   └── styles.css           # Spotify theming + mobile responsiveness
+├── www/
+│   └── redirect.js          # JavaScript for OAuth redirects
+├── Dockerfile               # Container definition (rocker/shiny:4.3.1)
+├── docker-compose.yml       # Local development orchestration
+├── deploy.sh                # Google Cloud Run deployment script
+├── DEPLOY.md                # Deployment guide
+├── .env.example             # Credential template
+└── renv.lock                # Package dependencies lock file
 ```
 
-#### Deploy to Cloud Platforms
+## 🔄 How It Works
 
-The app can be deployed to any platform supporting Docker:
-- **DigitalOcean App Platform**
-- **AWS ECS / Fargate**
-- **Google Cloud Run**
-- **Azure Container Instances**
+1. **Login**: Click "Login with Spotify" to authenticate via OAuth.
+2. **Top Artists**: See your most-listened artists ranked with popularity scores and Spotify links.
+3. **Top Tracks**: Browse your most played tracks with artist, album, and popularity info.
+4. **Top Genres**: Visualize the genre distribution across your top artists.
+5. **My Playlists**: Browse your existing Spotify playlists with track counts.
+6. **Create Playlist**: Generate new playlists from three sources:
+   - Your top tracks (with time range selection)
+   - Top tracks from your favorite artists
+   - Your recently played tracks
 
-Set these environment variables in your cloud platform:
-- `SPOTIFY_CLIENT_ID`
-- `SPOTIFY_CLIENT_SECRET`
-- `APP_URL` (your production HTTPS URL)
-- `SHINY_ENV=production`
+## 🔐 API Keys Required
 
-**Important:** Spotify requires HTTPS for OAuth redirect URIs in production (as of November 2025).
+| Variable | Description |
+| -------- | ----------- |
+| `SPOTIFY_CLIENT_ID` | Spotify Developer app client ID |
+| `SPOTIFY_CLIENT_SECRET` | Spotify Developer app client secret |
+| `APP_URL` | Your app's URL (for OAuth redirect) |
 
+Set these as environment variables or in a `.env` file.
 
-## Local Development
-
-For running the app locally during development:
+## 🧪 Local Development
 
 ```bash
-# Install dependencies
-R -e "renv::restore()"
+# Copy and configure environment
+cp .env.example .env
+# Edit .env with your Spotify credentials
 
-# Set environment variables
-export SPOTIFY_CLIENT_ID=your_client_id
-export SPOTIFY_CLIENT_SECRET=your_client_secret
-export APP_URL=http://127.0.0.1:8080
+# Build and run with Docker
+sudo docker compose up --build
 
-# Run the app
-Rscript run.R
+# Access at http://127.0.0.1:8080
 ```
 
+## 🚀 Deployment
 
-## How it started
+Deployed on **Google Cloud Run** with credentials stored in **Secret Manager**.
+
+See [DEPLOY.md](DEPLOY.md) for full deployment instructions, or quick deploy:
+
+```bash
+./deploy.sh
+```
+
+## 📦 Required R Packages
+
+- [conflicted](https://conflicted.r-lib.org/) - Conflict resolution for functions
+- [dplyr](https://dplyr.tidyverse.org/) - Data manipulation
+- [ggplot2](https://ggplot2.tidyverse.org/) - Data visualization
+- [httr](https://httr.r-lib.org/) - HTTP requests and OAuth
+- [jsonlite](https://github.com/jeroen/jsonlite) - JSON parsing
+- [plotly](https://plotly-r.com/) - Interactive plots
+- [purrr](https://purrr.tidyverse.org/) - Functional programming helpers
+- [shiny](https://shiny.posit.co/) - Web application framework
+- [shinydashboard](https://rstudio.github.io/shinydashboard/) - Dashboard components
+- [shinythemes](https://rstudio.github.io/shinythemes/) - Bootstrap themes
+- [stringr](https://stringr.tidyverse.org/) - String manipulation
+- [tidyr](https://tidyr.tidyverse.org/) - Data tidying
+- [waiter](https://waiter.john-coene.com/) - Loading animations
+
+## 🎨 Tech Stack
+
+| Component | Technology |
+| --------- | ---------- |
+| Language | R |
+| Framework | Shiny |
+| Music Data | Spotify Web API |
+| Visualizations | plotly + ggplot2 |
+| Styling | Custom CSS (dark theme) |
+| Containerization | Docker |
+| Deployment | Google Cloud Run |
+| Secrets | Google Cloud Secret Manager |
+
+## 💡 How It Started
 
 The inspiration for this project came from R User Group Helsinki's [workshop](https://github.com/eivicent/r-meetups-hki/tree/main/2023_03_28_SpotifyR) in March 2023. We learned to use the [Spotify API](https://developer.spotify.com/documentation/web-api) using the {spotifyr} package.
 
-I used some of the original functions, but also came up with some new ones. The biggest change, though, was creating a Shiny app to combine the different functions as a coherent whole.
+The original app relied on Spotify's audio features and recommendations APIs, which were [deprecated in November 2024](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api). TrackTeller is a complete redesign using only currently available endpoints.
 
+## 📄 License
 
-## Architecture
+[MIT](https://opensource.org/license/mit)
 
-The app consists of:
+## 👤 Author
 
-### 1. UI (`ui.R`)
-* Function-based UI for OAuth handling
-* Shiny theme ('cyborg') with custom CSS
-* [Font Awesome](https://fontawesome.com/) Spotify icon
-* autoWaiter() for loading animations
-* Conditional panels based on authentication state
-
-### 2. Server (`server.R`)
-* OAuth token management with automatic refresh
-* Session-based authentication (no credentials stored)
-* Reactive expressions for:
-    * Fetching top artists and track features
-    * Summarizing album features
-    * Creating interactive plots with {plotly}
-* Playlist creation via Spotify API
-
-### 3. OAuth Module (`scripts/spotify_oauth.R`)
-* Custom implementation of Spotify Authorization Code Flow
-* Token exchange and refresh handling
-* Secure callback processing
-
-### 4. Configuration (`scripts/config.R`)
-* Environment-based configuration
-* Support for development and production modes
-
-
-## Tech Stack
-
-* **R** with **Shiny** for the web framework
-* **spotifyr** for Spotify API integration
-* **httr** for OAuth and HTTP requests
-* **plotly** and **ggplot2** for visualizations
-* **Docker** for containerization
-* **renv** for dependency management
-
-
-## Contributing
-
-Is there something you would like to see? Let me know by opening an issue!
+Created by [Antti Rask](https://anttirask.github.io)

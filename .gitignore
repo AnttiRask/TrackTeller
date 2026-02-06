@@ -40,8 +40,8 @@ vignettes/*.pdf
 .Renviron
 .env
 
-# pkgdown site
-docs/
+# pkgdown site (not used - docs/ is for GitHub Pages)
+# docs/
 
 # translation temp files
 po/*~
