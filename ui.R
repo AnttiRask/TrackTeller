@@ -275,14 +275,17 @@ uiFunc <- function(req) {
 
                                radioButtons(
                                    "playlist_visibility",
-                                   "Visibility:",
+                                   "Profile visibility:",
                                    choices = c(
-                                       "Public" = "public",
-                                       "Private" = "private"
+                                       "Show on profile" = "public",
+                                       "Hide from profile" = "private"
                                    ),
                                    selected = "public",
                                    inline = TRUE
                                ),
+                               p(class = "text-muted small",
+                                 "Note: Spotify's API only controls profile visibility. ",
+                                 "To make a playlist truly private, adjust settings in the Spotify app after creation."),
                                br(),
 
                                actionButton("generate", "Generate Playlist",
