@@ -1,4 +1,4 @@
-# Deploying TrackTeller to Google Cloud Run
+# Deploying TrackTeller-app to Google Cloud Run
 
 ## Prerequisites
 
@@ -18,10 +18,10 @@ gcloud init
 
 ```bash
 # Create a new project (or use existing)
-gcloud projects create trackteller --name="TrackTeller"
+gcloud projects create trackteller-app --name="TrackTeller"
 
 # Set as active project
-gcloud config set project trackteller
+gcloud config set project trackteller-app
 
 # Enable required APIs
 gcloud services enable cloudbuild.googleapis.com
@@ -33,14 +33,14 @@ gcloud services enable artifactregistry.googleapis.com
 
 ```bash
 # Deploy directly from source (Cloud Build will build the Docker image)
-gcloud run deploy trackteller \
+gcloud run deploy trackteller-app \
   --source . \
   --platform managed \
   --region europe-north1 \
   --allow-unauthenticated \
   --set-env-vars "SPOTIFY_CLIENT_ID=your_client_id" \
   --set-env-vars "SPOTIFY_CLIENT_SECRET=your_client_secret" \
-  --set-env-vars "APP_URL=https://trackteller-XXXXXX-lz.a.run.app" \
+  --set-env-vars "APP_URL=https://trackteller-app-XXXXXX-lz.a.run.app" \
   --memory 1Gi \
   --timeout 300
 ```
@@ -51,7 +51,7 @@ gcloud run deploy trackteller \
 
 After deployment, Cloud Run will give you a URL like:
 ```
-https://trackteller-abc123xyz-lz.a.run.app
+https://trackteller-app-abc123xyz-lz.a.run.app
 ```
 
 ## Step 5: Update Spotify Developer Dashboard
@@ -67,14 +67,14 @@ https://trackteller-abc123xyz-lz.a.run.app
 Now that you have the URL, redeploy with the correct `APP_URL`:
 
 ```bash
-gcloud run deploy trackteller \
+gcloud run deploy trackteller-app \
   --source . \
   --platform managed \
   --region europe-north1 \
   --allow-unauthenticated \
   --set-env-vars "SPOTIFY_CLIENT_ID=your_client_id" \
   --set-env-vars "SPOTIFY_CLIENT_SECRET=your_client_secret" \
-  --set-env-vars "APP_URL=https://trackteller-XXXXXX-lz.a.run.app" \
+  --set-env-vars "APP_URL=https://trackteller-app-XXXXXX-lz.a.run.app" \
   --memory 1Gi \
   --timeout 300
 ```
@@ -98,7 +98,7 @@ gcloud secrets add-iam-policy-binding spotify-client-secret \
   --role="roles/secretmanager.secretAccessor"
 
 # Deploy with secrets
-gcloud run deploy trackteller \
+gcloud run deploy trackteller-app \
   --source . \
   --platform managed \
   --region europe-north1 \
@@ -124,14 +124,14 @@ For a personal project with occasional use, this should be **completely free**.
 To deploy updates:
 
 ```bash
-gcloud run deploy trackteller --source .
+gcloud run deploy trackteller-app --source .
 ```
 
 ## Monitoring
 
 View logs:
 ```bash
-gcloud run logs read trackteller --region europe-north1
+gcloud run logs read trackteller-app --region europe-north1
 ```
 
 View in console:

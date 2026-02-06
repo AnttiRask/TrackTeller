@@ -4,9 +4,9 @@
 set -e
 
 # Configuration
-PROJECT_ID="${GCP_PROJECT:-trackteller}"
+PROJECT_ID="${GCP_PROJECT:-trackteller-app}"
 REGION="${GCP_REGION:-europe-north1}"
-SERVICE_NAME="trackteller"
+SERVICE_NAME="trackteller-app"
 
 # Colors for output
 RED='\033[0;31m'
