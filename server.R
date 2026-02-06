@@ -706,7 +706,7 @@ server <- function(input, output, session) {
             } else {
                 # More to fetch - schedule next batch
                 playlists_offset(offset + batch_size)
-                invalidateLater(0)
+                invalidateLater(100)
             }
         }, error = function(e) {
             showNotification(paste("Error loading playlists:", e$message), type = "error", duration = 10)
