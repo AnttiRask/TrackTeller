@@ -14,6 +14,9 @@ TrackTeller is a Spotify-connected Shiny web app that provides insights into you
 2. **Docker Deployment** - Containerized app with environment-based configuration
 3. **Redesigned Visualizations** - Replaced deprecated audio features with new artist/genre/track visualizations
 4. **New Playlist Generator** - Uses top tracks instead of deprecated recommendations API
+5. **My Playlists** - Browse existing Spotify playlists
+6. **Production Deployment** - Google Cloud Run with Secret Manager for credentials
+7. **Mobile Responsiveness** - CSS media queries for tablets and phones
 
 ### Why the Redesign?
 
@@ -25,6 +28,8 @@ The original app relied heavily on these endpoints. The redesigned app uses only
 - `/me/top/artists` - User's top artists ✅
 - `/me/top/tracks` - User's top tracks ✅
 - `/artists/{id}/top-tracks` - Artist's popular tracks ✅
+- `/me/playlists` - User's playlists ✅
+- `/me/player/recently-played` - Recently played tracks ✅
 
 ---
 
@@ -70,6 +75,8 @@ Features:
 | `.env.example` | Credential template |
 | `.dockerignore` | Docker build exclusions |
 | `www/redirect.js` | JavaScript for OAuth redirects |
+| `DEPLOY.md` | Google Cloud Run deployment guide |
+| `deploy.sh` | Deployment helper script |
 
 ### Files Modified
 
@@ -170,7 +177,7 @@ The following features from the original app are no longer possible:
 
 ## Security Notes
 
-- Client credentials stored as environment variables only
+- Client credentials stored in Google Cloud Secret Manager
 - Tokens stored in Shiny session (not persistent)
 - HTTPS required for production (Spotify requirement)
 - State parameter used to prevent CSRF attacks
