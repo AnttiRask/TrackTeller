@@ -59,3 +59,130 @@ p {
     display: flex;
     justify-content: center;
 }
+
+/* ============================================
+   MOBILE RESPONSIVENESS
+   ============================================ */
+
+/* Cards - make them stack better on mobile */
+.artist-card,
+.track-card,
+.playlist-card {
+    flex-wrap: wrap;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+    /* Sidebar and main panel stack vertically */
+    .col-sm-4,
+    .col-sm-8 {
+        width: 100%;
+        padding: 10px 15px;
+    }
+
+    /* Cards - stack content vertically on mobile */
+    .artist-card,
+    .track-card,
+    .playlist-card {
+        flex-direction: column;
+        align-items: flex-start !important;
+        padding: 15px !important;
+    }
+
+    .artist-card > div,
+    .track-card > div,
+    .playlist-card > div {
+        margin-left: 0 !important;
+        margin-top: 8px;
+        width: 100%;
+    }
+
+    /* Rank number on mobile */
+    .artist-card > div:first-child,
+    .track-card > div:first-child,
+    .playlist-card > div:first-child {
+        width: auto;
+        margin-bottom: 5px;
+    }
+
+    /* Stats align left on mobile */
+    .artist-card > div:nth-child(3),
+    .track-card > div:nth-child(3),
+    .playlist-card > div:nth-child(4) {
+        text-align: left !important;
+    }
+
+    /* Spotify button full width on mobile */
+    .artist-card > a,
+    .track-card > a,
+    .playlist-card > a {
+        margin-left: 0 !important;
+        margin-top: 10px;
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Playlist image on mobile */
+    .playlist-card > img {
+        margin-left: 0 !important;
+        width: 60px !important;
+        height: 60px !important;
+    }
+
+    /* Welcome page icons */
+    .mainPanel > div > div > div {
+        gap: 20px !important;
+    }
+
+    /* Sliders and inputs full width */
+    .form-control,
+    .selectize-input,
+    .irs {
+        width: 100% !important;
+    }
+
+    /* Genre plot height on mobile */
+    .plotly {
+        height: 500px !important;
+    }
+
+    /* Navbar - smaller title */
+    .navbar-brand {
+        font-size: 14px !important;
+    }
+
+    /* Better button spacing */
+    .btn-lg {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+}
+
+/* Small mobile (phones) */
+@media (max-width: 480px) {
+    /* Even smaller navbar */
+    .navbar-brand {
+        font-size: 12px !important;
+    }
+
+    .navbar-nav > li > a {
+        font-size: 12px;
+        padding: 10px 8px;
+    }
+
+    /* Smaller headings */
+    h2 {
+        font-size: 1.5em;
+    }
+
+    h3 {
+        font-size: 1.2em;
+    }
+
+    /* Card text sizes */
+    .artist-card,
+    .track-card,
+    .playlist-card {
+        font-size: 14px;
+    }
+}

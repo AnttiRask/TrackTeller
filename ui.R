@@ -41,104 +41,116 @@ uiFunc <- function(req) {
 
         navbarPage(
             # Application title
+            id = "main_navbar",
             title = list(
                 icon("spotify", lib = "font-awesome"),
-                "Spotify Playlist Generator"
+                "TrackTeller"
             ),
 
-            # Authentication tab
+            # Top Artists tab - landing page with inline auth
             tabPanel(
-                "Intro",
+                "Top Artists",
+                value = "top_artists",
                 sidebarPanel(
-                    h3("Authentication:"),
-                    br(),
-
-                    # Show different content based on auth state
+                    # Show auth controls when not authenticated
                     conditionalPanel(
                         condition = "output.is_authenticated == false",
-                        p("Click the button below to login with your Spotify account:"),
+                        h3("Welcome to TrackTeller"),
+                        br(),
+                        p("Discover insights about your Spotify listening habits."),
+                        br(),
+                        p("Login to see your top artists, tracks, genres, and create playlists."),
                         br(),
                         actionButton("login_btn", "Login with Spotify",
                                    class = "btn-success btn-lg",
                                    icon = icon("spotify")),
                         br(),
-                        br()
+                        br(),
+                        uiOutput("auth_status")
                     ),
 
+                    # Show controls when authenticated
                     conditionalPanel(
                         condition = "output.is_authenticated == true",
-                        p(icon("check-circle", class = "text-success"),
-                          " You are logged in!"),
+                        h3("Your Top Artists"),
                         br(),
-                        textOutput("user_display_name"),
+                        p("Ranked by how much you listen to them."),
                         br(),
-                        actionButton("logout_btn", "Logout",
-                                   class = "btn-outline-secondary")
-                    ),
-
-                    # Status messages
-                    br(),
-                    uiOutput("auth_status")
-                ),
-                mainPanel(
-                    # Display welcome and instructions
-                    h2("Welcome to the Spotify Playlist Generator"),
-                    br(),
-                    h6("You can use this tool to see different analyses on your favorite music on Spotify. You can even create new playlists that use your favorites as a starting point!"),
-                    br(),
-                    h6("Getting started is easy:"),
-                    h6("Step 1: Click the 'Login with Spotify' button on the left"),
-                    h6("Step 2: Authorize the app to access your Spotify data"),
-                    h6("Step 3: You'll be redirected back here, ready to explore!"),
-                    br(),
-                    h6("Once logged in, click any of the tabs above to get started.")
-                )
-            ),
-
-            # Top Artists tab - shows user's top artists with details
-            tabPanel(
-                "Top Artists",
-                sidebarPanel(
-                    h3("Your Top Artists"),
-                    br(),
-                    p("Your top artists from Spotify, ranked by how much you listen to them."),
-                    br(),
-                    selectInput(
-                        "time_range",
-                        "Time range:",
-                        choices = c(
-                            "Last 4 weeks" = "short_term",
-                            "Last 6 months" = "medium_term",
-                            "All time" = "long_term"
+                        selectInput(
+                            "time_range",
+                            "Time range:",
+                            choices = c(
+                                "Last 4 weeks" = "short_term",
+                                "Last 6 months" = "medium_term",
+                                "All time" = "long_term"
+                            ),
+                            selected = "short_term"
                         ),
-                        selected = "short_term"
-                    ),
-                    br(),
-                    sliderInput(
-                        "top_artists_count",
-                        "Number of artists to show:",
-                        min = 10,
-                        max = 50,
-                        value = 20,
-                        step = 5
-                    ),
-                    br(),
-                    p(class = "text-muted small",
-                      "Note: Spotify only provides these three time ranges. ",
-                      "Custom date ranges are not available through the API.")
+                        br(),
+                        sliderInput(
+                            "top_artists_count",
+                            "Number of artists to show:",
+                            min = 10,
+                            max = 50,
+                            value = 20,
+                            step = 5
+                        ),
+                        br(),
+                        p(class = "text-muted small",
+                          "Note: Spotify only provides these three time ranges."),
+                        br(),
+                        hr(),
+                        div(
+                            style = "display: flex; align-items: center; gap: 10px;",
+                            textOutput("user_display_name"),
+                            actionButton("logout_btn", "Logout",
+                                       class = "btn-outline-secondary btn-sm")
+                        )
+                    )
                 ),
                 mainPanel(
-                    uiOutput("top_artists_list")
+                    # Show welcome message when not authenticated
+                    conditionalPanel(
+                        condition = "output.is_authenticated == false",
+                        div(
+                            style = "text-align: center; padding: 60px 20px;",
+                            h2("Discover Your Music DNA", style = "color: #1DB954;"),
+                            br(),
+                            p(style = "font-size: 1.1em; max-width: 500px; margin: 0 auto;",
+                              "See your top artists, favorite tracks, genre breakdown, ",
+                              "and create custom playlists based on your listening history."),
+                            br(),
+                            br(),
+                            div(
+                                style = "display: flex; justify-content: center; gap: 40px; flex-wrap: wrap;",
+                                div(icon("users", class = "fa-3x", style = "color: #1DB954;"),
+                                    p("Top Artists")),
+                                div(icon("music", class = "fa-3x", style = "color: #1DB954;"),
+                                    p("Top Tracks")),
+                                div(icon("chart-bar", class = "fa-3x", style = "color: #1DB954;"),
+                                    p("Genre Stats")),
+                                div(icon("list", class = "fa-3x", style = "color: #1DB954;"),
+                                    p("Playlists"))
+                            )
+                        )
+                    ),
+                    # Show artist list when authenticated
+                    conditionalPanel(
+                        condition = "output.is_authenticated == true",
+                        uiOutput("top_artists_list"),
+                        div(style = "height: 40px;")
+                    )
                 )
             ),
 
-            # Top Tracks tab - moved next to Top Artists
+            # Top Tracks tab
             tabPanel(
                 "Top Tracks",
+                value = "top_tracks",
                 sidebarPanel(
                     h3("Your Top Tracks"),
                     br(),
-                    p("These are your most played tracks on Spotify, ranked by listening frequency."),
+                    p("Your most played tracks, ranked by listening frequency."),
                     br(),
                     selectInput(
                         "time_range_tracks",
@@ -161,17 +173,19 @@ uiFunc <- function(req) {
                     )
                 ),
                 mainPanel(
-                    uiOutput("top_tracks_list")
+                    uiOutput("top_tracks_list"),
+                    div(style = "height: 40px;")
                 )
             ),
 
             # Top Genres tab
             tabPanel(
                 "Top Genres",
+                value = "top_genres",
                 sidebarPanel(
                     h3("Your Top Genres"),
                     br(),
-                    p("This shows the distribution of genres across your top artists."),
+                    p("Genre distribution across your top artists."),
                     br(),
                     selectInput(
                         "time_range_genres",
@@ -194,13 +208,39 @@ uiFunc <- function(req) {
                     )
                 ),
                 mainPanel(
-                    plotlyOutput("genre_plot", height = 700)
+                    plotlyOutput("genre_plot", height = 700),
+                    div(style = "height: 40px;")
+                )
+            ),
+
+            # My Playlists tab
+            tabPanel(
+                "My Playlists",
+                value = "my_playlists",
+                sidebarPanel(
+                    h3("Your Playlists"),
+                    br(),
+                    p("Browse your Spotify playlists."),
+                    br(),
+                    sliderInput(
+                        "playlists_count",
+                        "Number of playlists to show:",
+                        min = 10,
+                        max = 50,
+                        value = 20,
+                        step = 5
+                    )
+                ),
+                mainPanel(
+                    uiOutput("user_playlists_list"),
+                    div(style = "height: 40px;")
                 )
             ),
 
             # Playlist Generator tab
             tabPanel(
-                "Playlist Generator",
+                "Create Playlist",
+                value = "playlist_generator",
                 fluidPage(
                     fluidRow(
                         column(4,

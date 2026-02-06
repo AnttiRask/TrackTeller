@@ -631,8 +631,150 @@ server <- function(input, output, session) {
     })
 
     # ============================================
+    # MY PLAYLISTS TAB
+    # ============================================
+
+    # Fetch user's playlists
+    user_playlists_data <- reactive({
+        req(is_authenticated())
+        token <- get_access_token()
+        req(token)
+
+        limit <- input$playlists_count
+        if (is.null(limit)) limit <- 20
+
+        tryCatch({
+            response <- GET(
+                "https://api.spotify.com/v1/me/playlists",
+                add_headers(Authorization = paste("Bearer", token)),
+                query = list(limit = limit)
+            )
+
+            if (status_code(response) != 200) {
+                stop(paste("Failed to fetch playlists. Status:", status_code(response)))
+            }
+
+            data <- content(response, "parsed")
+
+            if (length(data$items) == 0) {
+                return(NULL)
+            }
+
+            # Extract playlist data
+            playlists <- map_dfr(seq_along(data$items), function(i) {
+                playlist <- data$items[[i]]
+                tibble(
+                    rank = i,
+                    id = playlist$id,
+                    name = playlist$name,
+                    description = if (!is.null(playlist$description)) playlist$description else "",
+                    track_count = playlist$tracks$total,
+                    owner = playlist$owner$display_name,
+                    is_public = if (!is.null(playlist$public)) playlist$public else TRUE,
+                    image_url = if (length(playlist$images) > 0) playlist$images[[1]]$url else NA_character_,
+                    spotify_url = playlist$external_urls$spotify
+                )
+            })
+
+            return(playlists)
+        }, error = function(e) {
+            showNotification(paste("Error:", e$message), type = "error", duration = 10)
+            return(NULL)
+        })
+    })
+
+    # Render user's playlists
+    output$user_playlists_list <- renderUI({
+        req(user_playlists_data())
+        data <- user_playlists_data()
+
+        validate(need(nrow(data) > 0, "No playlists found."))
+
+        # Create a list of playlist cards
+        playlist_cards <- lapply(seq_len(nrow(data)), function(i) {
+            playlist <- data[i, ]
+            tags$div(
+                class = "playlist-card",
+                style = paste0(
+                    "display: flex; align-items: center; padding: 12px; ",
+                    "margin-bottom: 8px; background: #282828; border-radius: 8px; ",
+                    "transition: background 0.2s; cursor: default;"
+                ),
+                # Rank number
+                tags$div(
+                    style = "color: #1DB954; font-size: 1.4em; font-weight: bold; width: 40px; text-align: center;",
+                    paste0("#", playlist$rank)
+                ),
+                # Playlist image (if available)
+                if (!is.na(playlist$image_url)) {
+                    tags$img(
+                        src = playlist$image_url,
+                        style = "width: 50px; height: 50px; border-radius: 4px; margin-left: 10px; object-fit: cover;"
+                    )
+                } else {
+                    tags$div(
+                        style = "width: 50px; height: 50px; border-radius: 4px; margin-left: 10px; background: #333; display: flex; align-items: center; justify-content: center;",
+                        icon("music", style = "color: #666;")
+                    )
+                },
+                # Playlist info
+                tags$div(
+                    style = "flex: 1; margin-left: 15px;",
+                    tags$div(
+                        style = "color: #fff; font-size: 1.1em; font-weight: 500;",
+                        playlist$name
+                    ),
+                    tags$div(
+                        style = "color: #b3b3b3; font-size: 0.9em; margin-top: 4px;",
+                        paste0("By ", playlist$owner)
+                    )
+                ),
+                # Stats
+                tags$div(
+                    style = "text-align: right; color: #b3b3b3; font-size: 0.85em;",
+                    tags$div(
+                        style = "color: #1DB954;",
+                        paste0(playlist$track_count, " tracks")
+                    ),
+                    tags$div(
+                        if (playlist$is_public) "Public" else "Private"
+                    )
+                ),
+                # Spotify link button
+                tags$a(
+                    href = playlist$spotify_url,
+                    target = "_blank",
+                    style = paste0(
+                        "margin-left: 15px; padding: 8px 12px; ",
+                        "background: #1DB954; color: #fff; border-radius: 20px; ",
+                        "text-decoration: none; font-size: 0.85em; font-weight: 500; ",
+                        "display: flex; align-items: center; gap: 5px;"
+                    ),
+                    icon("spotify"),
+                    "Open"
+                )
+            )
+        })
+
+        tags$div(
+            style = "max-height: 700px; overflow-y: auto; padding-right: 10px;",
+            playlist_cards
+        )
+    })
+
+    # ============================================
     # PLAYLIST GENERATOR TAB
     # ============================================
+
+    # Clear playlist form when leaving the tab
+    observeEvent(input$main_navbar, {
+        if (input$main_navbar != "playlist_generator") {
+            # Clear the playlist name input
+            updateTextInput(session, "playlist_name", value = "")
+            # Clear the success/error message
+            output$playlist_link <- renderUI({ NULL })
+        }
+    }, ignoreInit = TRUE)
 
     # Store selected tracks for playlist
     playlist_tracks <- reactiveVal(NULL)
@@ -876,7 +1018,7 @@ server <- function(input, output, session) {
         playlist_body <- jsonlite::toJSON(
             list(
                 name = as.character(playlist_name),
-                description = "Generated with R!",
+                description = "Created with TrackTeller - github.com/AnttiRask/TrackTeller",
                 public = TRUE
             ),
             auto_unbox = TRUE
