@@ -42,7 +42,7 @@ The original app relied heavily on these endpoints. The redesigned app uses only
 | **Top Artists** | Landing page with login. Shows ranked list of your most-listened artists with popularity and Spotify links |
 | **Top Tracks** | Your most played tracks ranked by listening frequency |
 | **Top Genres** | Genre distribution chart across your top artists |
-| **My Playlists** | Browse your existing Spotify playlists with track counts and visibility status |
+| **My Playlists** | Browse all your Spotify playlists with alphabetical letter filter, incremental loading, and progress indicator |
 | **Create Playlist** | Generate new playlists from your listening data |
 
 ### Playlist Generator
@@ -126,9 +126,13 @@ Required environment variables:
 
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
-- `APP_URL` (your Cloud Run HTTPS URL)
+- `APP_URL` (your Cloud Run HTTPS URL or custom domain)
 
-**Important:** Add your Cloud Run URL to Spotify Developer Dashboard redirect URIs.
+**Important:** Add your production URL to Spotify Developer Dashboard redirect URIs.
+
+### Custom Domain
+
+The app is deployed at `https://trackteller.youcanbeapirate.com` using Cloud Run domain mapping with a CNAME record pointing to `ghs.googlehosted.com`. SSL is auto-provisioned by Google.
 
 ---
 
