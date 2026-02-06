@@ -164,6 +164,20 @@ API calls use session token
 
 ---
 
+## Planned Features
+
+### Unfollow Playlists
+
+Add an "Unfollow" button to playlist cards in the My Playlists tab. The Spotify API has no delete endpoint, but unfollowing (`DELETE /v1/playlists/{playlist_id}/followers`) effectively removes a playlist from the user's library. For playlists the user owns, this is the equivalent of deleting them.
+
+- Add unfollow button to each playlist card
+- Confirmation dialog before unfollowing (destructive action)
+- Remove the playlist from the local data after successful unfollow
+- Update the playlist count and letter filter if needed
+- No new OAuth scopes needed (`playlist-modify-public` and `playlist-modify-private` already included)
+
+---
+
 ## Known Limitations
 
 ### Deprecated Spotify APIs
