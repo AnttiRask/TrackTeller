@@ -18,6 +18,7 @@ REDIRECT_URI <- APP_URL
 SPOTIFY_SCOPES <- c(
     "user-top-read",
     "user-read-recently-played",
+    "playlist-read-private",
     "playlist-modify-public",
     "playlist-modify-private"
 )

@@ -1,8 +1,8 @@
-# Plan: Deploy Spotify Playlist Generator Online
+# TrackTeller
 
 ## Status: ✅ IMPLEMENTED
 
-This project converts the local [spotify-playlist-generator-local](https://github.com/AnttiRask/spotify-playlist-generator-local) Shiny app into an online web application.
+TrackTeller is a Spotify-connected Shiny web app that provides insights into your listening habits. It evolved from [spotify-playlist-generator-local](https://github.com/AnttiRask/spotify-playlist-generator-local).
 
 ---
 
@@ -30,25 +30,30 @@ The original app relied heavily on these endpoints. The redesigned app uses only
 
 ## Current Features
 
-### Visualizations
+### Tabs
 
 | Tab | Description |
 |-----|-------------|
-| **Top Artists** | Bar chart of user's top 20 artists with popularity, followers, and genres |
-| **Genre Distribution** | Breakdown of genres across top artists (configurable count) |
-| **Top Tracks** | User's most played tracks with artist, album, and popularity |
+| **Top Artists** | Landing page with login. Shows ranked list of your most-listened artists with popularity and Spotify links |
+| **Top Tracks** | Your most played tracks ranked by listening frequency |
+| **Top Genres** | Genre distribution chart across your top artists |
+| **My Playlists** | Browse your existing Spotify playlists with track counts and visibility status |
+| **Create Playlist** | Generate new playlists from your listening data |
 
 ### Playlist Generator
 
-Two modes for creating playlists:
-1. **My Top Tracks** - Creates playlist from user's personal top tracks with time range selection
-2. **Top Tracks from My Top Artists** - Collects top tracks from favorite artists
+Three sources for creating playlists:
+
+1. **My Top Tracks** - Creates playlist from your personal top tracks
+2. **Top Tracks from My Top Artists** - Collects popular tracks from your favorite artists
+3. **Recently Played** - Uses your recently played tracks
 
 Features:
 - Live preview before generating
 - Configurable track count (10-50)
 - Time range options (4 weeks, 6 months, all time)
 - Custom playlist naming
+- Playlists include TrackTeller attribution in description
 
 ---
 
@@ -70,8 +75,9 @@ Features:
 
 | File | Changes |
 |------|---------|
-| `ui.R` | Function-based UI, login button, new visualization tabs |
-| `server.R` | Session-based tokens, new visualizations, top-tracks playlist generator |
+| `ui.R` | Function-based UI, login on Top Artists tab, 5 content tabs |
+| `server.R` | Session-based tokens, visualizations, My Playlists, playlist generator |
+| `css/styles.css` | Spotify theming, mobile responsiveness |
 | `run.R` | Uses shinyApp() with uiFunc |
 
 ---
@@ -136,8 +142,12 @@ API calls use session token
 ```
 
 ### Scopes Used
+
 - `user-top-read` - Read user's top artists and tracks
+- `user-read-recently-played` - Access recently played tracks
+- `playlist-read-private` - Read user's private playlists
 - `playlist-modify-public` - Create public playlists
+- `playlist-modify-private` - Create private playlists
 
 ---
 
