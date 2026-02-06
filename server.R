@@ -846,13 +846,25 @@ server <- function(input, output, session) {
             )
         })
 
-        status_text <- if (still_loading) {
-            paste0("Showing ", filtered_count, " of ", total_count, " playlists loaded so far...")
-        } else {
-            paste0("Showing ", filtered_count, " of ", total_count, " playlists")
+        loading_banner <- if (still_loading) {
+            tags$div(
+                style = paste0(
+                    "display: flex; align-items: center; gap: 10px; padding: 10px 15px; ",
+                    "margin-bottom: 12px; background: #1a3a2a; border: 1px solid #1DB954; ",
+                    "border-radius: 8px; color: #1DB954;"
+                ),
+                tags$div(
+                    style = "width: 16px; height: 16px; border: 2px solid #1a3a2a; border-top-color: #1DB954; border-radius: 50%; animation: spin 1s linear infinite; flex-shrink: 0;",
+                ),
+                tags$style("@keyframes spin { to { transform: rotate(360deg); } }"),
+                tags$span(paste0("Loading playlists... ", total_count, " found so far. You can already browse below."))
+            )
         }
 
+        status_text <- paste0("Showing ", filtered_count, " of ", total_count, " playlists")
+
         tags$div(
+            loading_banner,
             tags$p(
                 style = "color: #b3b3b3; margin-bottom: 10px;",
                 status_text
