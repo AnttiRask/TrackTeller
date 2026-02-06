@@ -1,23 +1,3 @@
-features <- c(
-    "acousticness",
-    "danceability",
-    "energy",
-    "instrumentalness",
-    "speechiness",
-    "valence"
-)
-
-monokai_palette <- c(
-    "#F92672",
-    "#FD971F",
-    "#F4BF75",
-    "#A6E22E",
-    "#A1EFE4",
-    "#66D9EF",
-    "#AE81FF",
-    "#CC6633"
-)
-
 spotify_colors <- list(
     dark_green  = "#1DB954",
     light_green = "#1ed760",
