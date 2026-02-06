@@ -18,7 +18,7 @@
 
 ## 🚀 Live App
 
-👉 [Try it live on Google Cloud Run](https://trackteller-app-4nyb7sykxa-lz.a.run.app)
+👉 [Try it live on Google Cloud Run](https://trackteller.youcanbeapirate.com)
 
 ## 🛠️ Project Structure
 

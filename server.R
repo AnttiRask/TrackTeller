@@ -634,63 +634,83 @@ server <- function(input, output, session) {
     # MY PLAYLISTS TAB
     # ============================================
 
-    # Fetch ALL user's playlists (paginated)
-    all_playlists_data <- reactive({
+    # Incremental playlist loading state
+    all_playlists_data <- reactiveVal(NULL)
+    playlists_loading <- reactiveVal(FALSE)
+    playlists_offset <- reactiveVal(0)
+    playlists_done <- reactiveVal(FALSE)
+
+    # Start loading when My Playlists tab is opened
+    observeEvent(input$main_navbar, {
+        if (input$main_navbar == "my_playlists" &&
+            is.null(all_playlists_data()) &&
+            !playlists_loading()) {
+            playlists_loading(TRUE)
+            playlists_offset(0)
+            playlists_done(FALSE)
+        }
+    })
+
+    # Load one batch at a time, yielding between batches for UI updates
+    observe({
+        req(playlists_loading())
+        req(!playlists_done())
         req(is_authenticated())
         token <- get_access_token()
         req(token)
 
+        offset <- playlists_offset()
+        batch_size <- 50
+
         tryCatch({
-            all_items <- list()
-            offset <- 0
-            batch_size <- 50
+            response <- GET(
+                "https://api.spotify.com/v1/me/playlists",
+                add_headers(Authorization = paste("Bearer", token)),
+                query = list(limit = batch_size, offset = offset)
+            )
 
-            repeat {
-                response <- GET(
-                    "https://api.spotify.com/v1/me/playlists",
-                    add_headers(Authorization = paste("Bearer", token)),
-                    query = list(limit = batch_size, offset = offset)
-                )
-
-                if (status_code(response) != 200) {
-                    stop(paste("Failed to fetch playlists. Status:", status_code(response)))
-                }
-
-                data <- content(response, "parsed")
-                items <- data$items
-
-                if (length(items) == 0) break
-
-                all_items <- c(all_items, items)
-                offset <- offset + batch_size
-
-                if (length(items) < batch_size) break
+            if (status_code(response) != 200) {
+                stop(paste("Failed to fetch playlists. Status:", status_code(response)))
             }
 
-            if (length(all_items) == 0) return(NULL)
+            data <- content(response, "parsed")
+            items <- data$items
 
-            # Extract playlist data
-            playlists <- map_dfr(seq_along(all_items), function(i) {
-                playlist <- all_items[[i]]
-                tibble(
-                    id = playlist$id,
-                    name = playlist$name,
-                    description = if (!is.null(playlist$description)) playlist$description else "",
-                    track_count = playlist$tracks$total,
-                    owner = playlist$owner$display_name,
-                    is_public = if (!is.null(playlist$public)) playlist$public else TRUE,
-                    image_url = if (length(playlist$images) > 0) playlist$images[[1]]$url else NA_character_,
-                    spotify_url = playlist$external_urls$spotify
-                )
-            })
+            if (length(items) > 0) {
+                # Extract this batch (NULL-safe)
+                batch <- map_dfr(seq_along(items), function(i) {
+                    playlist <- items[[i]]
+                    tibble(
+                        id = playlist$id %||% NA_character_,
+                        name = playlist$name %||% "(Untitled)",
+                        description = playlist$description %||% "",
+                        track_count = playlist$tracks$total %||% 0L,
+                        owner = playlist$owner$display_name %||% "Unknown",
+                        is_public = playlist$public %||% TRUE,
+                        image_url = if (length(playlist$images) > 0) playlist$images[[1]]$url else NA_character_,
+                        spotify_url = playlist$external_urls$spotify %||% NA_character_
+                    )
+                })
 
-            # Sort alphabetically (case-insensitive)
-            playlists <- playlists %>% arrange(tolower(name))
+                # Append to existing data and sort
+                current <- all_playlists_data()
+                updated <- if (is.null(current)) batch else bind_rows(current, batch)
+                updated <- updated %>% arrange(tolower(name))
+                all_playlists_data(updated)
+            }
 
-            return(playlists)
+            if (length(items) < batch_size) {
+                # All done
+                playlists_done(TRUE)
+                playlists_loading(FALSE)
+            } else {
+                # More to fetch - schedule next batch
+                playlists_offset(offset + batch_size)
+                invalidateLater(0)
+            }
         }, error = function(e) {
-            showNotification(paste("Error:", e$message), type = "error", duration = 10)
-            return(NULL)
+            showNotification(paste("Error loading playlists:", e$message), type = "error", duration = 10)
+            playlists_loading(FALSE)
         })
     })
 
@@ -714,10 +734,13 @@ server <- function(input, output, session) {
             }
         }
 
-        # Default to first available choice
+        # Keep current selection if still valid, otherwise first available
+        current <- input$playlist_letter
+        selected <- if (!is.null(current) && current %in% available) current else available[[1]]
+
         updateSelectInput(session, "playlist_letter",
             choices = available,
-            selected = available[[1]]
+            selected = selected
         )
     })
 
@@ -727,7 +750,7 @@ server <- function(input, output, session) {
         req(data)
 
         letter <- input$playlist_letter
-        if (is.null(letter) || length(letter) == 0) return(head(data, 0))
+        if (is.null(letter) || length(letter) == 0 || letter == "") return(head(data, 0))
 
         if (letter == "#") {
             data %>% filter(!grepl("^[A-Za-z]", name))
@@ -738,7 +761,21 @@ server <- function(input, output, session) {
 
     # Render user's playlists
     output$user_playlists_list <- renderUI({
+        loading <- playlists_loading()
         all_data <- all_playlists_data()
+
+        # Show spinner if loading hasn't produced any data yet
+        if (loading && is.null(all_data)) {
+            return(tags$div(
+                style = "text-align: center; padding: 40px; color: #b3b3b3;",
+                tags$div(
+                    style = "display: inline-block; width: 30px; height: 30px; border: 3px solid #333; border-top-color: #1DB954; border-radius: 50%; animation: spin 1s linear infinite;",
+                ),
+                tags$style("@keyframes spin { to { transform: rotate(360deg); } }"),
+                tags$p(style = "margin-top: 15px;", "Loading playlists...")
+            ))
+        }
+
         req(all_data)
         data <- filtered_playlists_data()
 
@@ -746,6 +783,7 @@ server <- function(input, output, session) {
 
         total_count <- nrow(all_data)
         filtered_count <- nrow(data)
+        still_loading <- loading
 
         # Create a list of playlist cards
         playlist_cards <- lapply(seq_len(nrow(data)), function(i) {
@@ -808,10 +846,16 @@ server <- function(input, output, session) {
             )
         })
 
+        status_text <- if (still_loading) {
+            paste0("Showing ", filtered_count, " of ", total_count, " playlists loaded so far...")
+        } else {
+            paste0("Showing ", filtered_count, " of ", total_count, " playlists")
+        }
+
         tags$div(
             tags$p(
                 style = "color: #b3b3b3; margin-bottom: 10px;",
-                paste0("Showing ", filtered_count, " of ", total_count, " playlists")
+                status_text
             ),
             tags$div(
                 style = "max-height: 700px; overflow-y: auto; padding-right: 10px;",
