@@ -176,6 +176,14 @@ Add an "Unfollow" button to playlist cards in the My Playlists tab. The Spotify 
 - Update the playlist count and letter filter if needed
 - No new OAuth scopes needed (`playlist-modify-public` and `playlist-modify-private` already included)
 
+### Genre Tooltip with Artist Names
+
+Show which artists belong to each genre in the Top Genres chart tooltip. Currently the tooltip only shows the genre name, artist count, and percentage. The artist data is already fetched but the genre-to-artist mapping is discarded during counting.
+
+- Build a genre -> artist names mapping when processing the API response
+- Include artist names in the plotly tooltip text (e.g., "Rock\nArtists: 5 (Artist A, Artist B, ...)\nPercentage: 12.3%")
+- No additional API calls needed - the data comes from the same `/me/top/artists` response
+
 ---
 
 ## Known Limitations
