@@ -176,6 +176,15 @@ Add an "Unfollow" button to playlist cards in the My Playlists tab. The Spotify 
 - Update the playlist count and letter filter if needed
 - No new OAuth scopes needed (`playlist-modify-public` and `playlist-modify-private` already included)
 
+### Manual Data Refresh
+
+Add a refresh button so users can re-fetch data without switching tabs or changing filters. Currently, if a user's Spotify activity changes mid-session (e.g., new follows, recent plays), the app won't reflect it until a tab switch or filter change triggers a new API call.
+
+- Add a refresh button to the header or navigation area (visible on all tabs)
+- On click, re-fetch the data for the currently active tab from the Spotify API
+- Show a brief loading indicator during refresh
+- No new OAuth scopes needed — uses the same endpoints already in use
+
 ### Genre Tooltip with Artist Names
 
 Show which artists belong to each genre in the Top Genres chart tooltip. Currently the tooltip only shows the genre name, artist count, and percentage. The artist data is already fetched but the genre-to-artist mapping is discarded during counting.
