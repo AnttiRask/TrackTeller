@@ -47,6 +47,10 @@ if [ -f .env ]; then
     echo "Reading from .env file..."
     while IFS='=' read -r key value; do
         if [[ -n "$key" && "$key" != \#* && -z "${!key}" ]]; then
+            value="${value%\"}"   # strip trailing quote
+            value="${value#\"}"   # strip leading quote
+            value="${value%\'}"
+            value="${value#\'}"
             export "$key=$value"
         fi
     done < .env
