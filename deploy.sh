@@ -81,42 +81,51 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --condition=None \
     --quiet > /dev/null
 
-# First deployment to get URL
-echo -e "${GREEN}Deploying to Cloud Run...${NC}"
-DEPLOY_OUTPUT=$(gcloud run deploy "$SERVICE_NAME" \
-    --source . \
-    --platform managed \
-    --region "$REGION" \
-    --allow-unauthenticated \
-    --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest,SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
-    --set-env-vars "APP_URL=https://placeholder.run.app" \
-    --memory 1Gi \
-    --timeout 300 \
-    2>&1)
+# Determine APP_URL: use custom domain from env/.env, or discover from Cloud Run
+if [ -n "$APP_URL" ] && [ "$APP_URL" != "http://127.0.0.1:8080" ] && [ "$APP_URL" != "http://localhost:8080" ]; then
+    echo -e "${GREEN}Using custom APP_URL: ${APP_URL}${NC}"
+    gcloud run deploy "$SERVICE_NAME" \
+        --source . \
+        --platform managed \
+        --region "$REGION" \
+        --allow-unauthenticated \
+        --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest,SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
+        --set-env-vars "APP_URL=$APP_URL" \
+        --memory 1Gi \
+        --timeout 300
+else
+    # First deployment to get URL (first-time setup without custom domain)
+    echo -e "${GREEN}Deploying to Cloud Run...${NC}"
+    gcloud run deploy "$SERVICE_NAME" \
+        --source . \
+        --platform managed \
+        --region "$REGION" \
+        --allow-unauthenticated \
+        --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest,SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
+        --set-env-vars "APP_URL=https://placeholder.run.app" \
+        --memory 1Gi \
+        --timeout 300
 
-# Extract the service URL
-SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --format="value(status.url)")
-
-echo -e "${GREEN}Service deployed at: ${SERVICE_URL}${NC}"
-
-# Redeploy with correct APP_URL
-echo -e "${YELLOW}Redeploying with correct APP_URL...${NC}"
-gcloud run deploy "$SERVICE_NAME" \
-    --source . \
-    --platform managed \
-    --region "$REGION" \
-    --allow-unauthenticated \
-    --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest,SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
-    --set-env-vars "APP_URL=$SERVICE_URL" \
-    --memory 1Gi \
-    --timeout 300
+    # Extract the service URL and redeploy with correct APP_URL
+    APP_URL=$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --format="value(status.url)")
+    echo -e "${YELLOW}Redeploying with discovered APP_URL: ${APP_URL}${NC}"
+    gcloud run deploy "$SERVICE_NAME" \
+        --source . \
+        --platform managed \
+        --region "$REGION" \
+        --allow-unauthenticated \
+        --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest,SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
+        --set-env-vars "APP_URL=$APP_URL" \
+        --memory 1Gi \
+        --timeout 300
+fi
 
 echo ""
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
-echo -e "Your app is live at: ${GREEN}${SERVICE_URL}${NC}"
+echo -e "Your app is live at: ${GREEN}${APP_URL}${NC}"
 echo ""
 echo -e "${YELLOW}IMPORTANT: Add this URL to Spotify Developer Dashboard:${NC}"
 echo -e "1. Go to https://developer.spotify.com/dashboard/"
 echo -e "2. Select your app -> Edit Settings"
-echo -e "3. Add to Redirect URIs: ${SERVICE_URL}"
+echo -e "3. Add to Redirect URIs: ${APP_URL}"
 echo -e "4. Save"
