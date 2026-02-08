@@ -65,14 +65,30 @@ if [ -z "$SPOTIFY_CLIENT_SECRET" ]; then
     echo
 fi
 
-# Store credentials in Secret Manager (create or update)
-echo -e "${YELLOW}Storing credentials in Secret Manager...${NC}"
+# Validate credentials look like real Spotify hex strings (32 chars)
+for SECRET_NAME in SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET; do
+    SECRET_VALUE="${!SECRET_NAME}"
+    if ! [[ "$SECRET_VALUE" =~ ^[a-f0-9]{32}$ ]]; then
+        echo -e "${RED}Error: ${SECRET_NAME} doesn't look like a valid Spotify credential: '${SECRET_VALUE}'${NC}"
+        exit 1
+    fi
+done
+
+# Store credentials in Secret Manager (only if changed)
+echo -e "${YELLOW}Checking Secret Manager credentials...${NC}"
 for SECRET_NAME in SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET; do
     SECRET_VALUE="${!SECRET_NAME}"
     if gcloud secrets describe "$SECRET_NAME" --project="$PROJECT_ID" &> /dev/null; then
-        echo -n "$SECRET_VALUE" | gcloud secrets versions add "$SECRET_NAME" --data-file=- --project="$PROJECT_ID"
+        STORED_VALUE=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>/dev/null || echo "")
+        if [ "$SECRET_VALUE" = "$STORED_VALUE" ]; then
+            echo "  $SECRET_NAME: unchanged"
+        else
+            echo -n "$SECRET_VALUE" | gcloud secrets versions add "$SECRET_NAME" --data-file=- --project="$PROJECT_ID"
+            echo "  $SECRET_NAME: updated"
+        fi
     else
         echo -n "$SECRET_VALUE" | gcloud secrets create "$SECRET_NAME" --data-file=- --replication-policy="automatic" --project="$PROJECT_ID"
+        echo "  $SECRET_NAME: created"
     fi
 done
 
