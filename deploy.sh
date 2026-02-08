@@ -39,7 +39,7 @@ gcloud config set project "$PROJECT_ID" 2>/dev/null || {
 
 # Enable required APIs
 echo -e "${YELLOW}Enabling required APIs...${NC}"
-gcloud services enable cloudbuild.googleapis.com run.googleapis.com artifactregistry.googleapis.com
+gcloud services enable cloudbuild.googleapis.com run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 
 # Check for required environment variables
 if [ -z "$SPOTIFY_CLIENT_ID" ] || [ -z "$SPOTIFY_CLIENT_SECRET" ]; then
@@ -61,6 +61,17 @@ if [ -z "$SPOTIFY_CLIENT_ID" ] || [ -z "$SPOTIFY_CLIENT_SECRET" ]; then
     fi
 fi
 
+# Store credentials in Secret Manager (create or update)
+echo -e "${YELLOW}Storing credentials in Secret Manager...${NC}"
+for SECRET_NAME in SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET; do
+    SECRET_VALUE="${!SECRET_NAME}"
+    if gcloud secrets describe "$SECRET_NAME" --project="$PROJECT_ID" &> /dev/null; then
+        echo -n "$SECRET_VALUE" | gcloud secrets versions add "$SECRET_NAME" --data-file=- --project="$PROJECT_ID"
+    else
+        echo -n "$SECRET_VALUE" | gcloud secrets create "$SECRET_NAME" --data-file=- --replication-policy="automatic" --project="$PROJECT_ID"
+    fi
+done
+
 # First deployment to get URL
 echo -e "${GREEN}Deploying to Cloud Run...${NC}"
 DEPLOY_OUTPUT=$(gcloud run deploy "$SERVICE_NAME" \
@@ -68,8 +79,7 @@ DEPLOY_OUTPUT=$(gcloud run deploy "$SERVICE_NAME" \
     --platform managed \
     --region "$REGION" \
     --allow-unauthenticated \
-    --set-env-vars "SPOTIFY_CLIENT_ID=$SPOTIFY_CLIENT_ID" \
-    --set-env-vars "SPOTIFY_CLIENT_SECRET=$SPOTIFY_CLIENT_SECRET" \
+    --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest,SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
     --set-env-vars "APP_URL=https://placeholder.run.app" \
     --memory 1Gi \
     --timeout 300 \
@@ -87,8 +97,7 @@ gcloud run deploy "$SERVICE_NAME" \
     --platform managed \
     --region "$REGION" \
     --allow-unauthenticated \
-    --set-env-vars "SPOTIFY_CLIENT_ID=$SPOTIFY_CLIENT_ID" \
-    --set-env-vars "SPOTIFY_CLIENT_SECRET=$SPOTIFY_CLIENT_SECRET" \
+    --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest,SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
     --set-env-vars "APP_URL=$SERVICE_URL" \
     --memory 1Gi \
     --timeout 300

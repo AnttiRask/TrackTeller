@@ -11,7 +11,7 @@ SPOTIFY_TOKEN_URL <- "https://accounts.spotify.com/api/token"
 # Generate the Spotify authorization URL
 spotify_authorize_url <- function(client_id, redirect_uri, scope, state = NULL) {
     if (is.null(state)) {
-        state <- paste0(sample(c(letters, LETTERS, 0:9), 16, replace = TRUE), collapse = "")
+        state <- paste0(sample(c(letters, LETTERS, 0:9), 32, replace = TRUE), collapse = "")
     }
 
     params <- list(
