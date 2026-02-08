@@ -72,6 +72,15 @@ for SECRET_NAME in SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET; do
     fi
 done
 
+# Grant Cloud Run service account access to Secret Manager
+echo -e "${YELLOW}Granting Secret Manager access to Cloud Run service account...${NC}"
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor" \
+    --condition=None \
+    --quiet > /dev/null
+
 # First deployment to get URL
 echo -e "${GREEN}Deploying to Cloud Run...${NC}"
 DEPLOY_OUTPUT=$(gcloud run deploy "$SERVICE_NAME" \
