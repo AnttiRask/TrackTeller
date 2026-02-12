@@ -77,11 +77,6 @@ uiFunc <- function(req) {
             includeCSS("css/styles.css")
         ),
 
-        # Hidden inputs to pass OAuth data to server
-        tags$input(type = "hidden", id = "oauth_code", value = if (has_code) query$code else ""),
-        tags$input(type = "hidden", id = "oauth_state", value = if (has_code) query$state else ""),
-        tags$input(type = "hidden", id = "oauth_error", value = if (has_error) query$error else ""),
-
         # Application title
         title = list(
             icon("spotify", lib = "font-awesome"),
@@ -93,6 +88,12 @@ uiFunc <- function(req) {
             nav_panel(
                 title = "Top Artists",
                 value = "top_artists",
+
+                # Hidden inputs to pass OAuth data to server
+                tags$input(type = "hidden", id = "oauth_code", value = if (has_code) query$code else ""),
+                tags$input(type = "hidden", id = "oauth_state", value = if (has_code) query$state else ""),
+                tags$input(type = "hidden", id = "oauth_error", value = if (has_error) query$error else ""),
+
                 sidebarPanel(
                     # Show auth controls when not authenticated
                     conditionalPanel(
