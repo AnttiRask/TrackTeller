@@ -1,9 +1,8 @@
 # Load required packages
+library(bslib)
 library(conflicted)
 library(plotly)
 library(purrr)
-library(shinydashboard)
-library(shinythemes)
 library(stringr)
 library(waiter)
 
@@ -11,6 +10,40 @@ library(waiter)
 source("scripts/global.R", local = TRUE)
 source("scripts/config.R", local = TRUE)
 source("scripts/spotify_oauth.R", local = TRUE)
+
+# Shared footer component for cross-linking between apps
+create_app_footer <- function(current_app = "") {
+    tags$footer(
+        class = "app-footer mt-5 py-4 border-top",
+        div(
+            class = "container text-center",
+            div(
+                class = "footer-apps mb-3",
+                p(class = "text-muted mb-2", "youcanbeapiRate apps:"),
+                div(
+                    class = "d-flex justify-content-center gap-3 flex-wrap",
+                    if(current_app != "trackteller")
+                        a(href = "https://trackteller.youcanbeapirate.com", "TrackTeller"),
+                    if(current_app != "tuneteller")
+                        a(href = "https://tuneteller.youcanbeapirate.com", "TuneTeller"),
+                    if(current_app != "bibliostatus")
+                        a(href = "https://bibliostatus.youcanbeapirate.com", "BiblioStatus"),
+                    if(current_app != "gallery")
+                        a(href = "https://galleryoftheday.youcanbeapirate.com", "Gallery of the Day")
+                )
+            ),
+            div(
+                class = "footer-credit",
+                p(
+                    "Created by ",
+                    a(href = "https://anttirask.github.io", "Antti Rask"),
+                    " | ",
+                    a(href = "https://youcanbeapirate.com", "youcanbeapirate.com")
+                )
+            )
+        )
+    )
+}
 
 # Function-based UI for OAuth handling
 uiFunc <- function(req) {
@@ -21,17 +54,27 @@ uiFunc <- function(req) {
     has_code <- !is.null(query$code)
     has_error <- !is.null(query$error)
 
-    fluidPage(
+    page_navbar(
+        theme = bs_theme(
+            version = 5,
+            bg = "#191414",
+            fg = "#FFFFFF",
+            primary = "#1DB954",      # Spotify green
+            secondary = "#C1272D",    # YouCanBePirate red
+            success = "#1DB954",
+            base_font = font_link(
+                family = "Gotham",
+                href = "https://fonts.cdnfonts.com/css/gotham-6"
+            )
+        ),
+
         # Automatically display a loading screen until UI is ready
         autoWaiter(),
 
-        # Set the theme and custom CSS
-        theme = shinytheme("cyborg"),
-        includeCSS("css/styles.css"),
-
-        # JavaScript for OAuth redirect handling
-        tags$head(
-            tags$script(src = "www/redirect.js")
+        header = tags$head(
+            tags$link(rel = "shortcut icon", type = "image/png", href = "favicon.png"),
+            tags$script(src = "www/redirect.js"),
+            includeCSS("css/styles.css")
         ),
 
         # Hidden inputs to pass OAuth data to server
@@ -39,17 +82,16 @@ uiFunc <- function(req) {
         tags$input(type = "hidden", id = "oauth_state", value = if (has_code) query$state else ""),
         tags$input(type = "hidden", id = "oauth_error", value = if (has_error) query$error else ""),
 
-        navbarPage(
-            # Application title
-            id = "main_navbar",
-            title = list(
-                icon("spotify", lib = "font-awesome"),
-                "TrackTeller"
-            ),
+        # Application title
+        title = list(
+            icon("spotify", lib = "font-awesome"),
+            "TrackTeller"
+        ),
+        id = "main_navbar",
 
             # Top Artists tab - landing page with inline auth
-            tabPanel(
-                "Top Artists",
+            nav_panel(
+                title = "Top Artists",
                 value = "top_artists",
                 sidebarPanel(
                     # Show auth controls when not authenticated
@@ -144,8 +186,8 @@ uiFunc <- function(req) {
             ),
 
             # Top Tracks tab
-            tabPanel(
-                "Top Tracks",
+            nav_panel(
+                title = "Top Tracks",
                 value = "top_tracks",
                 sidebarPanel(
                     h3("Your Top Tracks"),
@@ -179,8 +221,8 @@ uiFunc <- function(req) {
             ),
 
             # Top Genres tab
-            tabPanel(
-                "Top Genres",
+            nav_panel(
+                title = "Top Genres",
                 value = "top_genres",
                 sidebarPanel(
                     h3("Your Top Genres"),
@@ -214,8 +256,8 @@ uiFunc <- function(req) {
             ),
 
             # My Playlists tab
-            tabPanel(
-                "My Playlists",
+            nav_panel(
+                title = "My Playlists",
                 value = "my_playlists",
                 sidebarPanel(
                     h3("Your Playlists"),
@@ -236,8 +278,8 @@ uiFunc <- function(req) {
             ),
 
             # Playlist Generator tab
-            tabPanel(
-                "Create Playlist",
+            nav_panel(
+                title = "Create Playlist",
                 value = "playlist_generator",
                 fluidPage(
                     fluidRow(
@@ -327,7 +369,9 @@ uiFunc <- function(req) {
                         )
                     )
                 )
-            )
-        )
+            ),
+
+        # Add footer with cross-linking
+        footer = create_app_footer("trackteller")
     )
 }

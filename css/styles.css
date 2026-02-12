@@ -186,3 +186,52 @@ p {
         font-size: 14px;
     }
 }
+
+/* ============================================
+   FOOTER
+   ============================================ */
+
+.app-footer {
+    border-top: 1px solid #333333;
+    margin-top: 3rem;
+    padding-top: 2rem;
+}
+
+.app-footer a {
+    color: #C1272D;
+    text-decoration: none;
+}
+
+.app-footer a:hover {
+    color: #a02025;
+    text-decoration: underline;
+}
+
+.app-footer .text-muted {
+    color: #808080 !important;
+}
+
+/* ============================================
+   ACCESSIBILITY - KEYBOARD NAVIGATION
+   ============================================ */
+
+a:focus, button:focus, input:focus, select:focus {
+    outline: 2px solid #C1272D;
+    outline-offset: 2px;
+}
+
+/* Skip link for screen readers */
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: #191414;
+    color: #fff;
+    padding: 8px;
+    text-decoration: none;
+    z-index: 100;
+}
+
+.skip-link:focus {
+    top: 0;
+}
