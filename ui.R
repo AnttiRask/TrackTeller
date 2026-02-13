@@ -19,24 +19,23 @@ create_app_footer <- function(current_app = "") {
             class = "container text-center",
             div(
                 class = "footer-apps mb-3",
-                p(class = "text-muted mb-2", "youcanbeapiRate apps:"),
                 div(
                     class = "d-flex justify-content-center gap-3 flex-wrap",
-                    if(current_app != "trackteller")
-                        a(href = "https://trackteller.youcanbeapirate.com", "TrackTeller"),
-                    if(current_app != "tuneteller")
-                        a(href = "https://tuneteller.youcanbeapirate.com", "TuneTeller"),
                     if(current_app != "bibliostatus")
                         a(href = "https://bibliostatus.youcanbeapirate.com", "BiblioStatus"),
                     if(current_app != "gallery")
-                        a(href = "https://galleryoftheday.youcanbeapirate.com", "Gallery of the Day")
+                        a(href = "https://galleryoftheday.youcanbeapirate.com", "Gallery of the Day"),
+                    if(current_app != "trackteller")
+                        a(href = "https://trackteller.youcanbeapirate.com", "TrackTeller"),
+                    if(current_app != "tuneteller")
+                        a(href = "https://tuneteller.youcanbeapirate.com", "TuneTeller")
                 )
             ),
             div(
                 class = "footer-credit",
                 p(
                     "Created by ",
-                    a(href = "https://anttirask.github.io", "Antti Rask"),
+                    a(href = "https://www.linkedin.com/in/AnttiRask/", "Antti Rask"),
                     " | ",
                     a(href = "https://youcanbeapirate.com", "youcanbeapirate.com")
                 )
@@ -68,13 +67,12 @@ uiFunc <- function(req) {
             )
         ),
 
-        # Automatically display a loading screen until UI is ready
-        autoWaiter(),
-
         header = tags$head(
             tags$link(rel = "shortcut icon", type = "image/png", href = "favicon.png"),
             tags$script(src = "www/redirect.js"),
-            includeCSS("css/styles.css")
+            includeCSS("css/styles.css"),
+            # Automatically display a loading screen until UI is ready
+            autoWaiter()
         ),
 
         # Application title
@@ -156,24 +154,27 @@ uiFunc <- function(req) {
                     conditionalPanel(
                         condition = "output.is_authenticated == false",
                         div(
-                            style = "text-align: center; padding: 60px 20px;",
-                            h2("Discover Your Music DNA", style = "color: #1DB954;"),
-                            br(),
-                            p(style = "font-size: 1.1em; max-width: 500px; margin: 0 auto;",
+                            class = "d-flex flex-column align-items-center justify-content-center",
+                            style = "min-height: 400px; padding: 40px 20px;",
+                            h2("Discover Your Music DNA", class = "mb-4", style = "color: #1DB954;"),
+                            p(class = "text-center mb-5",
+                              style = "font-size: 1.1em; max-width: 600px;",
                               "See your top artists, favorite tracks, genre breakdown, ",
                               "and create custom playlists based on your listening history."),
-                            br(),
-                            br(),
                             div(
-                                style = "display: flex; justify-content: center; gap: 40px; flex-wrap: wrap;",
-                                div(icon("users", class = "fa-3x", style = "color: #1DB954;"),
-                                    p("Top Artists")),
-                                div(icon("music", class = "fa-3x", style = "color: #1DB954;"),
-                                    p("Top Tracks")),
-                                div(icon("chart-bar", class = "fa-3x", style = "color: #1DB954;"),
-                                    p("Genre Stats")),
-                                div(icon("list", class = "fa-3x", style = "color: #1DB954;"),
-                                    p("Playlists"))
+                                class = "d-flex justify-content-center gap-5 flex-wrap",
+                                div(class = "text-center",
+                                    icon("users", class = "fa-3x mb-3", style = "color: #1DB954;"),
+                                    p(class = "mb-0", "Top Artists")),
+                                div(class = "text-center",
+                                    icon("music", class = "fa-3x mb-3", style = "color: #1DB954;"),
+                                    p(class = "mb-0", "Top Tracks")),
+                                div(class = "text-center",
+                                    icon("chart-bar", class = "fa-3x mb-3", style = "color: #1DB954;"),
+                                    p(class = "mb-0", "Genre Stats")),
+                                div(class = "text-center",
+                                    icon("list", class = "fa-3x mb-3", style = "color: #1DB954;"),
+                                    p(class = "mb-0", "Playlists"))
                             )
                         )
                     ),
