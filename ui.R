@@ -92,64 +92,64 @@ uiFunc <- function(req) {
                 tags$input(type = "hidden", id = "oauth_state", value = if (has_code) query$state else ""),
                 tags$input(type = "hidden", id = "oauth_error", value = if (has_error) query$error else ""),
 
-                sidebarPanel(
-                    # Show auth controls when not authenticated
-                    conditionalPanel(
-                        condition = "output.is_authenticated == false",
-                        h3("Welcome to TrackTeller"),
-                        br(),
-                        p("Discover insights about your Spotify listening habits."),
-                        br(),
-                        p("Login to see your top artists, tracks, genres, and create playlists."),
-                        br(),
-                        actionButton("login_btn", "Login with Spotify",
-                                   class = "btn-success btn-lg",
-                                   icon = icon("spotify")),
-                        br(),
-                        br(),
-                        uiOutput("auth_status")
-                    ),
+                layout_sidebar(
+                    sidebar = sidebar(
+                        # Show auth controls when not authenticated
+                        conditionalPanel(
+                            condition = "output.is_authenticated == false",
+                            h3("Welcome to TrackTeller"),
+                            br(),
+                            p("Discover insights about your Spotify listening habits."),
+                            br(),
+                            p("Login to see your top artists, tracks, genres, and create playlists."),
+                            br(),
+                            actionButton("login_btn", "Login with Spotify",
+                                       class = "btn-success btn-lg",
+                                       icon = icon("spotify")),
+                            br(),
+                            br(),
+                            uiOutput("auth_status")
+                        ),
 
-                    # Show controls when authenticated
-                    conditionalPanel(
-                        condition = "output.is_authenticated == true",
-                        h3("Your Top Artists"),
-                        br(),
-                        p("Ranked by how much you listen to them."),
-                        br(),
-                        selectInput(
-                            "time_range",
-                            "Time range:",
-                            choices = c(
-                                "Last 4 weeks" = "short_term",
-                                "Last 6 months" = "medium_term",
-                                "All time" = "long_term"
+                        # Show controls when authenticated
+                        conditionalPanel(
+                            condition = "output.is_authenticated == true",
+                            h3("Your Top Artists"),
+                            br(),
+                            p("Ranked by how much you listen to them."),
+                            br(),
+                            selectInput(
+                                "time_range",
+                                "Time range:",
+                                choices = c(
+                                    "Last 4 weeks" = "short_term",
+                                    "Last 6 months" = "medium_term",
+                                    "All time" = "long_term"
+                                ),
+                                selected = "short_term"
                             ),
-                            selected = "short_term"
-                        ),
-                        br(),
-                        sliderInput(
-                            "top_artists_count",
-                            "Number of artists to show:",
-                            min = 10,
-                            max = 50,
-                            value = 20,
-                            step = 5
-                        ),
-                        br(),
-                        p(class = "text-muted small",
-                          "Note: Spotify only provides these three time ranges."),
-                        br(),
-                        hr(),
-                        div(
-                            style = "display: flex; align-items: center; gap: 10px;",
-                            textOutput("user_display_name"),
-                            actionButton("logout_btn", "Logout",
-                                       class = "btn-outline-secondary btn-sm")
+                            br(),
+                            sliderInput(
+                                "top_artists_count",
+                                "Number of artists to show:",
+                                min = 10,
+                                max = 50,
+                                value = 20,
+                                step = 5
+                            ),
+                            br(),
+                            p(class = "text-muted small",
+                              "Note: Spotify only provides these three time ranges."),
+                            br(),
+                            hr(),
+                            div(
+                                style = "display: flex; align-items: center; gap: 10px;",
+                                textOutput("user_display_name"),
+                                actionButton("logout_btn", "Logout",
+                                           class = "btn-outline-secondary btn-sm")
+                            )
                         )
-                    )
-                ),
-                mainPanel(
+                    ),
                     # Show welcome message when not authenticated
                     conditionalPanel(
                         condition = "output.is_authenticated == false",
@@ -191,32 +191,32 @@ uiFunc <- function(req) {
             nav_panel(
                 title = "Top Tracks",
                 value = "top_tracks",
-                sidebarPanel(
-                    h3("Your Top Tracks"),
-                    br(),
-                    p("Your most played tracks, ranked by listening frequency."),
-                    br(),
-                    selectInput(
-                        "time_range_tracks",
-                        "Time range:",
-                        choices = c(
-                            "Last 4 weeks" = "short_term",
-                            "Last 6 months" = "medium_term",
-                            "All time" = "long_term"
+                layout_sidebar(
+                    sidebar = sidebar(
+                        h3("Your Top Tracks"),
+                        br(),
+                        p("Your most played tracks, ranked by listening frequency."),
+                        br(),
+                        selectInput(
+                            "time_range_tracks",
+                            "Time range:",
+                            choices = c(
+                                "Last 4 weeks" = "short_term",
+                                "Last 6 months" = "medium_term",
+                                "All time" = "long_term"
+                            ),
+                            selected = "short_term"
                         ),
-                        selected = "short_term"
+                        br(),
+                        sliderInput(
+                            "top_tracks_count",
+                            "Number of tracks to show:",
+                            min = 10,
+                            max = 50,
+                            value = 20,
+                            step = 5
+                        )
                     ),
-                    br(),
-                    sliderInput(
-                        "top_tracks_count",
-                        "Number of tracks to show:",
-                        min = 10,
-                        max = 50,
-                        value = 20,
-                        step = 5
-                    )
-                ),
-                mainPanel(
                     uiOutput("top_tracks_list"),
                     div(style = "height: 40px;")
                 )
@@ -226,32 +226,32 @@ uiFunc <- function(req) {
             nav_panel(
                 title = "Top Genres",
                 value = "top_genres",
-                sidebarPanel(
-                    h3("Your Top Genres"),
-                    br(),
-                    p("Genre distribution across your top artists."),
-                    br(),
-                    selectInput(
-                        "time_range_genres",
-                        "Time range:",
-                        choices = c(
-                            "Last 4 weeks" = "short_term",
-                            "Last 6 months" = "medium_term",
-                            "All time" = "long_term"
+                layout_sidebar(
+                    sidebar = sidebar(
+                        h3("Your Top Genres"),
+                        br(),
+                        p("Genre distribution across your top artists."),
+                        br(),
+                        selectInput(
+                            "time_range_genres",
+                            "Time range:",
+                            choices = c(
+                                "Last 4 weeks" = "short_term",
+                                "Last 6 months" = "medium_term",
+                                "All time" = "long_term"
+                            ),
+                            selected = "short_term"
                         ),
-                        selected = "short_term"
+                        br(),
+                        sliderInput(
+                            "top_genres_count",
+                            "Number of top genres to show:",
+                            min = 5,
+                            max = 20,
+                            value = 10,
+                            step = 1
+                        )
                     ),
-                    br(),
-                    sliderInput(
-                        "top_genres_count",
-                        "Number of top genres to show:",
-                        min = 5,
-                        max = 20,
-                        value = 10,
-                        step = 1
-                    )
-                ),
-                mainPanel(
                     plotlyOutput("genre_plot", height = 700),
                     div(style = "height: 40px;")
                 )
@@ -261,19 +261,19 @@ uiFunc <- function(req) {
             nav_panel(
                 title = "My Playlists",
                 value = "my_playlists",
-                sidebarPanel(
-                    h3("Your Playlists"),
-                    br(),
-                    p("Browse all your Spotify playlists, filtered by first letter."),
-                    br(),
-                    selectInput(
-                        "playlist_letter",
-                        "Filter by first letter:",
-                        choices = c("Loading..." = ""),
-                        selected = ""
-                    )
-                ),
-                mainPanel(
+                layout_sidebar(
+                    sidebar = sidebar(
+                        h3("Your Playlists"),
+                        br(),
+                        p("Browse all your Spotify playlists, filtered by first letter."),
+                        br(),
+                        selectInput(
+                            "playlist_letter",
+                            "Filter by first letter:",
+                            choices = c("Loading..." = ""),
+                            selected = ""
+                        )
+                    ),
                     uiOutput("user_playlists_list"),
                     div(style = "height: 40px;")
                 )
