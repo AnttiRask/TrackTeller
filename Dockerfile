@@ -18,19 +18,12 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /srv/shiny-server/app
 
-# Copy renv files separately for better layer caching
+# Copy renv lock file first for better layer caching
 COPY renv.lock renv.lock
-COPY .Rprofile .Rprofile
-COPY renv/activate.R renv/activate.R
 
-# Install renv
+# Install renv and restore all packages (including magick)
 RUN R -e "install.packages('renv', repos = 'https://cloud.r-project.org/')"
-
-# Restore packages from renv.lock
 RUN R -e "renv::restore()"
-
-# Install magick (not in renv.lock; cached separately from app code)
-RUN R -e "renv::install('magick')"
 
 # Copy application files
 COPY . .
