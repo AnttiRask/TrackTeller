@@ -13,10 +13,13 @@ TrackTeller is a Spotify-connected Shiny web app that provides insights into you
 1. **Custom OAuth Implementation** - Replaced spotifyr's localhost OAuth with server-side Authorization Code Flow
 2. **Docker Deployment** - Containerized app with environment-based configuration
 3. **Redesigned Visualizations** - Replaced deprecated audio features with new artist/genre/track visualizations
-4. **New Playlist Generator** - Uses top tracks instead of deprecated recommendations API
-5. **My Playlists** - Browse existing Spotify playlists
+4. **Playlist Creation** - Modal-based playlist creation embedded in Top Artists, Top Tracks, and Recently Played tabs
+5. **My Playlists** - Browse existing Spotify playlists with incremental loading
 6. **Production Deployment** - Google Cloud Run with Secret Manager for credentials
 7. **Mobile Responsiveness** - CSS media queries for tablets and phones
+8. **Recently Played Tab** - Dedicated tab for recently played tracks
+9. **Shareable Stats Cards** - Downloadable PNG cards with artist/album images from Spotify CDN
+10. **Genre Tooltip** - Genre chart tooltips list the contributing artist names
 
 ### Why the Redesign?
 
@@ -39,53 +42,65 @@ The original app relied heavily on these endpoints. The redesigned app uses only
 
 | Tab | Description |
 |-----|-------------|
-| **Top Artists** | Landing page with login. Shows ranked list of your most-listened artists with popularity and Spotify links |
-| **Top Tracks** | Your most played tracks ranked by listening frequency |
-| **Top Genres** | Genre distribution chart across your top artists |
-| **My Playlists** | Browse all your Spotify playlists with alphabetical letter filter, incremental loading, and progress indicator |
-| **Create Playlist** | Generate new playlists from your listening data |
+| **Top Artists** | Landing page with login. Shows ranked list of your most-listened artists (10–50) with popularity, follower count, and Spotify links. Includes "Share Top Artists" and "Create Playlist from Top Artists" buttons. |
+| **Top Tracks** | Your most played tracks ranked by listening frequency (10–50) with artist, album, duration, and Spotify links. Includes "Share Top Tracks" and "Create Playlist from Top Tracks" buttons. |
+| **Recently Played** | Your most recently played tracks (up to 50, deduplicated). Includes "Create Playlist from Recently Played" button. |
+| **Top Genres** | Interactive horizontal bar chart of genre distribution across your top artists. Tooltip shows genre name, artist count, percentage, and up to 5 contributing artists. |
+| **My Playlists** | Browse all your Spotify playlists with alphabetical letter filter, incremental batch loading, and live progress indicator. |
 
-### Playlist Generator
+### Shareable Stats Cards
 
-Three sources for creating playlists:
+Two separate downloadable PNG cards (1200×630, social media–ready):
 
-1. **My Top Tracks** - Creates playlist from your personal top tracks
-2. **Top Tracks from My Top Artists** - Collects popular tracks from your favorite artists
-3. **Recently Played** - Uses your recently played tracks
+- **Share Top Artists** — 2-column layout with top 10 artists, artist photos from Spotify, rank, and name
+- **Share Top Tracks** — 2-column layout with top 10 tracks, album art from Spotify, rank, track name, and artist
+
+Both cards include the username, time range, and TrackTeller branding.
+
+### Playlist Creation
+
+Modal-based playlist creation embedded in three tabs. Each tab uses its own current settings (time range, count):
+
+| Source              | Default Playlist Name            |
+| ------------------- | -------------------------------- |
+| Top Artists tab     | My Top Artists (YYYY-MM-DD)      |
+| Top Tracks tab      | My Top Tracks (YYYY-MM-DD)       |
+| Recently Played tab | My Recently Played (YYYY-MM-DD)  |
 
 Features:
-- Live preview before generating
-- Configurable track count (10-50)
-- Time range options (4 weeks, 6 months, all time)
-- Custom playlist naming
+
+- Custom naming (empty input uses the default name with date)
 - Playlists include TrackTeller attribution in description
+- Link to the new playlist in Spotify shown on success
+
+### Time Range Sync
+
+All three time-range selectors (Top Artists, Top Tracks, Top Genres) stay in sync — changing one updates the others.
 
 ---
 
 ## Architecture
 
-### Files Created
+### Files
 
 | File | Purpose |
 |------|---------|
+| `ui.R` | Function-based UI (required for OAuth callback parsing), 5 nav tabs |
+| `server.R` | Session tokens, Spotify API calls, visualizations, stats card generation |
+| `run.R` | App entry point — creates `shinyApp(ui = uiFunc, server = server)` |
 | `scripts/spotify_oauth.R` | Custom OAuth 2.0 implementation |
-| `scripts/config.R` | Environment-based configuration |
-| `Dockerfile` | Container definition (rocker/shiny:4.3.1) |
-| `docker-compose.yml` | Development orchestration |
-| `.env.example` | Credential template |
-| `.dockerignore` | Docker build exclusions |
+| `scripts/config.R` | Environment-based configuration (URLs, scopes) |
+| `scripts/global.R` | Shared helpers (ggplot theme, colors) |
+| `css/styles.css` | Spotify dark theme + mobile responsiveness |
 | `www/redirect.js` | JavaScript for OAuth redirects |
-| `DEPLOY.md` | Google Cloud Run deployment guide |
-| `deploy.sh` | Deployment helper script |
-
-### Files Modified
-
-| File | Changes |
-|------|---------|
-| `ui.R` | Function-based UI, login on Top Artists tab, 5 content tabs |
-| `server.R` | Session-based tokens, visualizations, My Playlists, playlist generator |
-| `css/styles.css` | Spotify theming, mobile responsiveness |
-| `run.R` | Uses shinyApp() with uiFunc |
+| `www/favicon.png` | App favicon |
+| `Dockerfile` | Container definition (rocker/shiny:4.3.1 + magick) |
+| `docker-compose.yml` | Local development orchestration |
+| `deploy.sh` | Google Cloud Run deployment script |
+| `DEPLOY.md` | Deployment guide |
+| `.env.example` | Credential template |
+| `renv.lock` | Package dependency lock file |
+| `docs/index.html` | Static landing page (GitHub Pages) |
 
 ---
 
@@ -138,7 +153,7 @@ The app is deployed at `https://trackteller.youcanbeapirate.com` using Cloud Run
 
 ## OAuth Flow
 
-```
+```text
 User clicks "Login with Spotify"
          ↓
 Redirect to Spotify authorization page
@@ -151,7 +166,7 @@ Server exchanges code for access token
          ↓
 Token stored in Shiny session
          ↓
-API calls use session token
+API calls use session token (auto-refreshed before expiry)
 ```
 
 ### Scopes Used
@@ -175,23 +190,6 @@ Add an "Unfollow" button to playlist cards in the My Playlists tab. The Spotify 
 - Remove the playlist from the local data after successful unfollow
 - Update the playlist count and letter filter if needed
 - No new OAuth scopes needed (`playlist-modify-public` and `playlist-modify-private` already included)
-
-### Manual Data Refresh
-
-Add a refresh button so users can re-fetch data without switching tabs or changing filters. Currently, if a user's Spotify activity changes mid-session (e.g., new follows, recent plays), the app won't reflect it until a tab switch or filter change triggers a new API call.
-
-- Add a refresh button to the header or navigation area (visible on all tabs)
-- On click, re-fetch the data for the currently active tab from the Spotify API
-- Show a brief loading indicator during refresh
-- No new OAuth scopes needed — uses the same endpoints already in use
-
-### Genre Tooltip with Artist Names
-
-Show which artists belong to each genre in the Top Genres chart tooltip. Currently the tooltip only shows the genre name, artist count, and percentage. The artist data is already fetched but the genre-to-artist mapping is discarded during counting.
-
-- Build a genre -> artist names mapping when processing the API response
-- Include artist names in the plotly tooltip text (e.g., "Rock\nArtists: 5 (Artist A, Artist B, ...)\nPercentage: 12.3%")
-- No additional API calls needed - the data comes from the same `/me/top/artists` response
 
 ---
 

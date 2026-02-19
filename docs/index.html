@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TrackTeller | Spotify Listening Insights & Playlist Creator</title>
-    <meta name="description" content="Visualize your Spotify listening habits and create playlists from your personal data.">
+    <meta name="description" content="Visualize your Spotify listening habits, create playlists, and share your stats. Built with R and Shiny.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -134,11 +134,17 @@
 
         .steps {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 24px;
         }
 
-        @media (max-width: 800px) {
+        @media (max-width: 900px) {
+            .steps {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
             .steps {
                 grid-template-columns: repeat(2, 1fr);
             }
@@ -351,7 +357,7 @@
         <div class="container">
             <h1><span class="track">Track</span><span class="teller">Teller</span></h1>
             <p class="tagline">
-                Visualize your Spotify listening habits and create playlists from your personal data.
+                Visualize your Spotify listening habits, create playlists, and share your stats.
                 Built with R and Shiny.
             </p>
             <div class="cta-buttons">
@@ -389,7 +395,7 @@
                 <div class="step">
                     <div class="step-icon">📊</div>
                     <h3>Explore</h3>
-                    <p>See your top artists, tracks, and genre distribution visualized.</p>
+                    <p>See your top artists, tracks, genres, and recently played visualized.</p>
                 </div>
                 <div class="step">
                     <div class="step-icon">📋</div>
@@ -400,6 +406,11 @@
                     <div class="step-icon">✨</div>
                     <h3>Create</h3>
                     <p>Generate new playlists from your listening data with one click.</p>
+                </div>
+                <div class="step">
+                    <div class="step-icon">📸</div>
+                    <h3>Share</h3>
+                    <p>Download a stats card with your top 10 artists or tracks and their images.</p>
                 </div>
             </div>
         </div>
@@ -420,19 +431,29 @@
                     <p>Browse your most played tracks with artist, album, and popularity info.</p>
                 </div>
                 <div class="feature-card">
+                    <div class="feature-icon">🕐</div>
+                    <h3>Recently Played</h3>
+                    <p>See the tracks you've listened to most recently, deduplicated and ready to playlist.</p>
+                </div>
+                <div class="feature-card">
                     <div class="feature-icon">🎼</div>
                     <h3>Genre Distribution</h3>
-                    <p>Visualize the genre breakdown across your top artists.</p>
+                    <p>Interactive chart of the genre breakdown across your top artists, with artist name tooltips.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">📋</div>
                     <h3>My Playlists</h3>
-                    <p>Browse your existing Spotify playlists with track counts and visibility status.</p>
+                    <p>Browse your existing Spotify playlists with track counts and alphabetical filtering.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">✨</div>
                     <h3>Playlist Creator</h3>
-                    <p>Generate playlists from top tracks, favorite artists, or recently played.</p>
+                    <p>Generate playlists from top tracks, favorite artists, or recently played — directly from each tab.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📸</div>
+                    <h3>Share Your Stats</h3>
+                    <p>Download a 1200×630 card with your top 10 artists or tracks, complete with Spotify images.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">📱</div>
@@ -458,6 +479,10 @@
                 <div class="tech-item">
                     <div class="tech-badge">Spotify API</div>
                     <span class="tech-label">Music Data</span>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-badge">magick</div>
+                    <span class="tech-label">Image Cards</span>
                 </div>
                 <div class="tech-item">
                     <div class="tech-badge">Docker</div>

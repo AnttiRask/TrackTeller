@@ -4,11 +4,13 @@
 
 ## 🔍 Features
 
-- 🎤 View your top artists ranked by listening frequency
-- 🎵 Browse your most played tracks with Spotify links
-- 🎼 Explore genre distribution across your music taste
-- 📋 Browse your existing Spotify playlists
+- 🎤 View your top artists ranked by listening frequency (10–50, with popularity and follower count)
+- 🎵 Browse your most played tracks with artist, album, duration, and Spotify links
+- 🕐 See your recently played tracks
+- 🎼 Explore genre distribution with interactive tooltips showing contributing artists
+- 📋 Browse your existing Spotify playlists with alphabetical filter and incremental loading
 - ✨ Create new playlists from your top tracks, favorite artists, or recently played
+- 📸 Download shareable stats cards (top 10 artists or tracks with Spotify images)
 - 📱 Mobile-responsive design
 - 🔒 Secure OAuth with Spotify (no credentials stored)
 
@@ -24,22 +26,26 @@
 
 ```text
 TrackTeller/
-├── ui.R                     # UI definition (5 tabs + auth)
-├── server.R                 # Server logic (Spotify API + visualizations)
+├── ui.R                     # Function-based UI (5 tabs + OAuth callback handling)
+├── server.R                 # Server logic (Spotify API + visualizations + stats cards)
 ├── run.R                    # App entry point
 ├── scripts/
 │   ├── spotify_oauth.R      # Custom OAuth 2.0 implementation
-│   └── config.R             # Environment-based configuration
+│   ├── config.R             # Environment-based configuration
+│   └── global.R             # Shared helpers (ggplot theme, colors)
 ├── css/
-│   └── styles.css           # Spotify theming + mobile responsiveness
+│   └── styles.css           # Spotify dark theme + mobile responsiveness
 ├── www/
-│   └── redirect.js          # JavaScript for OAuth redirects
-├── Dockerfile               # Container definition (rocker/shiny:4.3.1)
+│   ├── redirect.js          # JavaScript for OAuth redirects
+│   └── favicon.png          # App favicon
+├── docs/
+│   └── index.html           # Static landing page (GitHub Pages)
+├── Dockerfile               # Container definition (rocker/shiny:4.3.1 + magick)
 ├── docker-compose.yml       # Local development orchestration
 ├── deploy.sh                # Google Cloud Run deployment script
 ├── DEPLOY.md                # Deployment guide
 ├── .env.example             # Credential template
-└── renv.lock                # Package dependencies lock file
+└── renv.lock                # Package dependency lock file
 ```
 
 ## 🔄 How It Works
@@ -47,12 +53,11 @@ TrackTeller/
 1. **Login**: Click "Login with Spotify" to authenticate via OAuth.
 2. **Top Artists**: See your most-listened artists ranked with popularity scores and Spotify links.
 3. **Top Tracks**: Browse your most played tracks with artist, album, and popularity info.
-4. **Top Genres**: Visualize the genre distribution across your top artists.
-5. **My Playlists**: Browse your existing Spotify playlists with track counts.
-6. **Create Playlist**: Generate new playlists from three sources:
-   - Your top tracks (with time range selection)
-   - Top tracks from your favorite artists
-   - Your recently played tracks
+4. **Recently Played**: See what you've been listening to lately.
+5. **Top Genres**: Visualize the genre distribution across your top artists.
+6. **My Playlists**: Browse your existing Spotify playlists with track counts.
+7. **Create Playlist**: Generate new playlists from top artists, top tracks, or recently played — directly from each tab.
+8. **Share Stats**: Download a 1200×630 PNG card for Top Artists or Top Tracks, complete with Spotify images.
 
 ## 🔐 API Keys Required
 
@@ -89,16 +94,16 @@ See [DEPLOY.md](DEPLOY.md) for full deployment instructions, or quick deploy:
 
 ## 📦 Required R Packages
 
+- [bslib](https://rstudio.github.io/bslib/) - Bootstrap 5 UI components and theming
 - [conflicted](https://conflicted.r-lib.org/) - Conflict resolution for functions
 - [dplyr](https://dplyr.tidyverse.org/) - Data manipulation
 - [ggplot2](https://ggplot2.tidyverse.org/) - Data visualization
 - [httr](https://httr.r-lib.org/) - HTTP requests and OAuth
-- [jsonlite](https://github.com/jeroen/jsonlite) - JSON parsing
+- [jsonlite](https://github.com/jeroen/jsonlite) - JSON serialization
+- [magick](https://docs.ropensci.org/magick/) - Image compositing for stats cards
 - [plotly](https://plotly-r.com/) - Interactive plots
 - [purrr](https://purrr.tidyverse.org/) - Functional programming helpers
 - [shiny](https://shiny.posit.co/) - Web application framework
-- [shinydashboard](https://rstudio.github.io/shinydashboard/) - Dashboard components
-- [shinythemes](https://rstudio.github.io/shinythemes/) - Bootstrap themes
 - [stringr](https://stringr.tidyverse.org/) - String manipulation
 - [tidyr](https://tidyr.tidyverse.org/) - Data tidying
 - [waiter](https://waiter.john-coene.com/) - Loading animations
@@ -108,9 +113,10 @@ See [DEPLOY.md](DEPLOY.md) for full deployment instructions, or quick deploy:
 | Component | Technology |
 | --------- | ---------- |
 | Language | R |
-| Framework | Shiny |
+| Framework | Shiny + bslib |
 | Music Data | Spotify Web API |
 | Visualizations | plotly + ggplot2 |
+| Image Processing | magick (ImageMagick) |
 | Styling | Custom CSS (dark theme) |
 | Containerization | Docker |
 | Deployment | Google Cloud Run |
