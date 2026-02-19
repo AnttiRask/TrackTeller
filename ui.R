@@ -108,6 +108,15 @@ uiFunc <- function(req) {
                                        icon = icon("spotify")),
                             br(),
                             br(),
+                            p(
+                                class = "text-muted small",
+                                "Don't have access yet? ",
+                                tags$a(
+                                    href = "https://forms.gle/cXwoNNVhmfZfWchj6",
+                                    target = "_blank",
+                                    "Request access here."
+                                )
+                            ),
                             uiOutput("auth_status")
                         ),
 
@@ -141,10 +150,18 @@ uiFunc <- function(req) {
                             p(class = "text-muted small",
                               "Note: Spotify only provides these three time ranges."),
                             br(),
+                            downloadButton("download_stats_card", "Share My Stats",
+                                         icon = icon("share-nodes"),
+                                         class = "btn-outline-secondary btn-sm w-100"),
+                            br(),
                             hr(),
                             div(
                                 style = "display: flex; align-items: center; gap: 10px;",
                                 textOutput("user_display_name"),
+                                actionButton("refresh_data", NULL,
+                                           icon = icon("rotate-right"),
+                                           class = "btn-outline-secondary btn-sm",
+                                           title = "Refresh data"),
                                 actionButton("logout_btn", "Logout",
                                            class = "btn-outline-secondary btn-sm")
                             )
@@ -182,6 +199,11 @@ uiFunc <- function(req) {
                     conditionalPanel(
                         condition = "output.is_authenticated == true",
                         uiOutput("top_artists_list"),
+                        div(
+                            style = "margin-top: 16px;",
+                            actionButton("create_playlist_artists", "Create Playlist from Top Artists",
+                                       class = "btn-success", icon = icon("music"))
+                        ),
                         div(style = "height: 40px;")
                     )
                 )
@@ -218,6 +240,40 @@ uiFunc <- function(req) {
                         )
                     ),
                     uiOutput("top_tracks_list"),
+                    div(
+                        style = "margin-top: 16px;",
+                        actionButton("create_playlist_tracks", "Create Playlist from Top Tracks",
+                                   class = "btn-success", icon = icon("music"))
+                    ),
+                    div(style = "height: 40px;")
+                )
+            ),
+
+            # Recently Played tab
+            nav_panel(
+                title = "Recently Played",
+                value = "recently_played",
+                layout_sidebar(
+                    sidebar = sidebar(
+                        h3("Recently Played"),
+                        br(),
+                        p("Your most recently played tracks."),
+                        br(),
+                        sliderInput(
+                            "recent_tracks_display_count",
+                            "Number of tracks to show:",
+                            min = 10,
+                            max = 50,
+                            value = 20,
+                            step = 5
+                        )
+                    ),
+                    uiOutput("recently_played_list"),
+                    div(
+                        style = "margin-top: 16px;",
+                        actionButton("create_playlist_recent", "Create Playlist from Recently Played",
+                                   class = "btn-success", icon = icon("music"))
+                    ),
                     div(style = "height: 40px;")
                 )
             ),
@@ -276,100 +332,6 @@ uiFunc <- function(req) {
                     ),
                     uiOutput("user_playlists_list"),
                     div(style = "height: 40px;")
-                )
-            ),
-
-            # Playlist Generator tab
-            nav_panel(
-                title = "Create Playlist",
-                value = "playlist_generator",
-                fluidPage(
-                    fluidRow(
-                        column(4,
-                               h3("Create Your Playlist"),
-                               br(),
-                               p("Create a playlist from your top tracks or discover new music from your favorite artists."),
-                               br(),
-
-                               selectInput(
-                                   "playlist_source",
-                                   "Source:",
-                                   choices = c(
-                                       "My Top Tracks" = "top_tracks",
-                                       "Top Tracks from My Top Artists" = "artist_tracks",
-                                       "Recently Played" = "recently_played"
-                                   ),
-                                   selected = "top_tracks"
-                               ),
-
-                               conditionalPanel(
-                                   condition = "input.playlist_source != 'recently_played'",
-                                   selectInput(
-                                       "playlist_time_range",
-                                       "Time range:",
-                                       choices = c(
-                                           "Last 4 weeks" = "short_term",
-                                           "Last 6 months" = "medium_term",
-                                           "All time" = "long_term"
-                                       ),
-                                       selected = "short_term"
-                                   )
-                               ),
-
-                               conditionalPanel(
-                                   condition = "input.playlist_source == 'top_tracks'",
-                                   sliderInput(
-                                       "playlist_track_count",
-                                       "Number of tracks:",
-                                       min = 10,
-                                       max = 50,
-                                       value = 20,
-                                       step = 5
-                                   )
-                               ),
-
-                               conditionalPanel(
-                                   condition = "input.playlist_source == 'artist_tracks'",
-                                   sliderInput(
-                                       "num_top_artists",
-                                       "Number of top artists to use:",
-                                       min = 10,
-                                       max = 50,
-                                       value = 20,
-                                       step = 5
-                                   )
-                               ),
-
-                               conditionalPanel(
-                                   condition = "input.playlist_source == 'recently_played'",
-                                   sliderInput(
-                                       "recent_tracks_count",
-                                       "Number of tracks to use:",
-                                       min = 10,
-                                       max = 50,
-                                       value = 20,
-                                       step = 5
-                                   )
-                               ),
-
-                               textInput("playlist_name", "Playlist Name:"),
-                               br(),
-
-                               actionButton("generate", "Generate Playlist",
-                                          class = "btn-success btn-lg",
-                                          icon = icon("music"))
-                        ),
-                        column(8,
-                               br(),
-                               br(),
-                               h4("Preview"),
-                               p("Tracks that will be added to your playlist:"),
-                               br(),
-                               uiOutput("playlist_preview"),
-                               br(),
-                               uiOutput("playlist_link")
-                        )
-                    )
                 )
             ),
 
