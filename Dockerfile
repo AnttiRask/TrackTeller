@@ -11,19 +11,26 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libtiff5-dev \
     libjpeg-dev \
+    libmagick++-dev \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /srv/shiny-server/app
 
-# Copy renv lock file first for caching
+# Copy renv files separately for better layer caching
 COPY renv.lock renv.lock
+COPY .Rprofile .Rprofile
+COPY renv/activate.R renv/activate.R
 
 # Install renv
 RUN R -e "install.packages('renv', repos = 'https://cloud.r-project.org/')"
 
 # Restore packages from renv.lock
 RUN R -e "renv::restore()"
+
+# Install magick (not in renv.lock; cached separately from app code)
+RUN R -e "renv::install('magick')"
 
 # Copy application files
 COPY . .

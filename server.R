@@ -3,6 +3,7 @@ library(conflicted)
 library(dplyr)
 library(ggplot2)
 library(httr)
+library(magick)
 library(plotly)
 library(purrr)
 library(stringr)
@@ -424,6 +425,7 @@ server <- function(input, output, session) {
                     album = track$album$name,
                     popularity = track$popularity,
                     duration_ms = track$duration_ms,
+                    album_image_url = if (length(track$album$images) > 0) track$album$images[[1]]$url else NA_character_,
                     spotify_url = track$external_urls$spotify
                 )
             })
@@ -990,17 +992,137 @@ server <- function(input, output, session) {
     })
 
     # ============================================
-    # SHAREABLE STATS CARD
+    # SHAREABLE STATS CARDS
     # ============================================
 
-    output$download_stats_card <- downloadHandler(
-        filename = function() paste0("my-music-stats-", Sys.Date(), ".png"),
-        content = function(file) {
-            artists <- isolate(top_artists_data())
-            tracks  <- isolate(top_tracks_data())
-            genres  <- isolate(genre_data())
-            username <- isolate(user_display_name_val())
+    # Download an image from a URL and resize it; returns a blank placeholder on failure
+    fetch_card_image <- function(url, size = 70) {
+        tryCatch({
+            if (!is.na(url) && nzchar(url)) {
+                art <- image_read(url)
+                image_scale(art, paste0(size, "x", size, "!"))
+            } else {
+                image_blank(size, size, color = "#282828")
+            }
+        }, error = function(e) {
+            image_blank(size, size, color = "#282828")
+        })
+    }
 
+    # Truncate a string to max_chars with ".." suffix if needed
+    trunc_str <- function(s, max_chars = 32) {
+        if (nchar(s) > max_chars) paste0(substr(s, 1, max_chars - 2), "..") else s
+    }
+
+    # Build a 1200x630 stats card using magick
+    # type = "artists" or "tracks"
+    build_stats_card <- function(data, username, time_label, type) {
+        W <- 1200L; H <- 630L
+
+        img <- image_blank(W, H, color = "#191414")
+
+        # ---- Header ----
+        title_text <- if (nzchar(username)) {
+            paste0(username, "\u2019s Top ", if (type == "artists") "Artists" else "Tracks")
+        } else {
+            paste0("My Top ", if (type == "artists") "Artists" else "Tracks")
+        }
+
+        img <- image_annotate(img, title_text,
+            size = 38, color = "#1DB954", font = "Liberation Sans",
+            weight = 700, gravity = "NorthWest", location = "+40+18"
+        )
+        img <- image_annotate(img, time_label,
+            size = 22, color = "#b3b3b3", font = "Liberation Sans",
+            gravity = "NorthWest", location = "+40+65"
+        )
+
+        # Header separator
+        hline <- image_blank(1120L, 2L, color = "#2d2d2d")
+        img <- image_composite(img, hline, offset = "+40+97")
+
+        # Vertical column separator
+        vline <- image_blank(2L, 470L, color = "#2d2d2d")
+        img <- image_composite(img, vline, offset = "+600+103")
+
+        # ---- Layout constants ----
+        img_size    <- 70L
+        row_h       <- 90L
+        start_y     <- 108L
+        left_img_x  <- 40L
+        left_txt_x  <- 122L   # left_img_x + img_size + 12
+        right_img_x <- 622L
+        right_txt_x <- 704L   # right_img_x + img_size + 12
+
+        top10 <- head(data, 10)
+
+        for (i in seq_len(nrow(top10))) {
+            col    <- if (i <= 5L) 1L else 2L
+            row    <- if (i <= 5L) i  else i - 5L
+            x_img  <- if (col == 1L) left_img_x  else right_img_x
+            x_txt  <- if (col == 1L) left_txt_x  else right_txt_x
+            y_base <- start_y + (row - 1L) * row_h
+
+            # Subtle row background (alternating)
+            if (row %% 2L == 0L) {
+                row_bg <- image_blank(550L, row_h - 4L, color = "#1d1d1d")
+                img <- image_composite(img, row_bg, offset = paste0("+", x_img - 4L, "+", y_base + 4L))
+            }
+
+            # Image (artist photo or album art)
+            img_url <- if (type == "artists") top10$image_url[i] else top10$album_image_url[i]
+            art_img <- fetch_card_image(img_url, img_size)
+            img <- image_composite(img, art_img, offset = paste0("+", x_img, "+", y_base + 10L))
+
+            if (type == "artists") {
+                # Single text line: rank + name
+                img <- image_annotate(img, paste0("#", i),
+                    size = 18L, color = "#1DB954", font = "Liberation Sans",
+                    weight = 700L, gravity = "NorthWest",
+                    location = paste0("+", x_txt, "+", y_base + 30L)
+                )
+                name <- trunc_str(top10$name[i], 30L)
+                img <- image_annotate(img, name,
+                    size = 22L, color = "#FFFFFF", font = "Liberation Sans",
+                    gravity = "NorthWest",
+                    location = paste0("+", x_txt + 48L, "+", y_base + 28L)
+                )
+            } else {
+                # Two text lines: rank + track name, then artist
+                img <- image_annotate(img, paste0("#", i),
+                    size = 18L, color = "#1DB954", font = "Liberation Sans",
+                    weight = 700L, gravity = "NorthWest",
+                    location = paste0("+", x_txt, "+", y_base + 22L)
+                )
+                tname <- trunc_str(top10$name[i], 26L)
+                img <- image_annotate(img, tname,
+                    size = 20L, color = "#FFFFFF", font = "Liberation Sans",
+                    gravity = "NorthWest",
+                    location = paste0("+", x_txt + 48L, "+", y_base + 18L)
+                )
+                aname <- trunc_str(top10$artist[i], 26L)
+                img <- image_annotate(img, aname,
+                    size = 17L, color = "#b3b3b3", font = "Liberation Sans",
+                    gravity = "NorthWest",
+                    location = paste0("+", x_txt + 48L, "+", y_base + 46L)
+                )
+            }
+        }
+
+        # ---- Footer ----
+        img <- image_annotate(img, "trackteller.youcanbeapirate.com",
+            size = 18L, color = "#555555", font = "Liberation Sans",
+            gravity = "South", location = "+0+18"
+        )
+
+        img
+    }
+
+    output$download_artists_card <- downloadHandler(
+        filename = function() paste0("top-artists-", Sys.Date(), ".png"),
+        content = function(file) {
+            artists <- isolate(all_top_artists_data())
+            username <- isolate(user_display_name_val())
             time_label <- switch(isolate(input$time_range),
                 "short_term"  = "Last 4 Weeks",
                 "medium_term" = "Last 6 Months",
@@ -1008,61 +1130,41 @@ server <- function(input, output, session) {
                 "All Time"
             )
 
-            top5_artists <- if (!is.null(artists) && nrow(artists) > 0) head(artists$name, 5) else character(0)
-            top5_tracks  <- if (!is.null(tracks) && nrow(tracks) > 0) {
-                head(paste0(tracks$name, " \u2013 ", tracks$artist), 5)
-            } else character(0)
-            top_genre <- if (!is.null(genres) && nrow(genres) > 0) genres$genre_display[1] else "N/A"
-
-            title_label <- if (nzchar(username)) {
-                paste0(username, "'s Music Stats \u2014 ", time_label)
-            } else {
-                paste0("My Music Stats \u2014 ", time_label)
+            if (is.null(artists) || nrow(artists) == 0) {
+                img <- image_blank(1200L, 630L, color = "#191414")
+                img <- image_annotate(img, "No data available",
+                    size = 30L, color = "#ffffff", gravity = "Center")
+                image_write(img, path = file, format = "png")
+                return()
             }
 
-            artist_ys <- seq(0.70, 0.34, length.out = 5)
-            track_ys  <- seq(0.70, 0.34, length.out = 5)
+            img <- build_stats_card(artists, username, time_label, "artists")
+            image_write(img, path = file, format = "png")
+        }
+    )
 
-            artist_annotations <- lapply(seq_along(top5_artists), function(i) {
-                annotate("text", x = 0.25, y = artist_ys[i],
-                         label = paste0(i, ". ", top5_artists[i]),
-                         color = "#b3b3b3", size = 3.5, hjust = 0.5, family = "sans")
-            })
+    output$download_tracks_card <- downloadHandler(
+        filename = function() paste0("top-tracks-", Sys.Date(), ".png"),
+        content = function(file) {
+            tracks <- isolate(all_top_tracks_data())
+            username <- isolate(user_display_name_val())
+            time_label <- switch(isolate(input$time_range_tracks),
+                "short_term"  = "Last 4 Weeks",
+                "medium_term" = "Last 6 Months",
+                "long_term"   = "All Time",
+                "All Time"
+            )
 
-            track_annotations <- lapply(seq_along(top5_tracks), function(i) {
-                annotate("text", x = 0.75, y = track_ys[i],
-                         label = top5_tracks[i],
-                         color = "#b3b3b3", size = 3.5, hjust = 0.5, family = "sans")
-            })
+            if (is.null(tracks) || nrow(tracks) == 0) {
+                img <- image_blank(1200L, 630L, color = "#191414")
+                img <- image_annotate(img, "No data available",
+                    size = 30L, color = "#ffffff", gravity = "Center")
+                image_write(img, path = file, format = "png")
+                return()
+            }
 
-            card <- ggplot() +
-                theme_void() +
-                theme(plot.background = element_rect(fill = "#191414", color = NA)) +
-                coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
-                annotate("text", x = 0.5, y = 0.93,
-                         label = title_label,
-                         color = "#1DB954", size = 6.5, fontface = "bold", hjust = 0.5,
-                         family = "sans") +
-                annotate("text", x = 0.25, y = 0.81,
-                         label = "TOP ARTISTS",
-                         color = "#FFFFFF", size = 4.5, fontface = "bold", hjust = 0.5,
-                         family = "sans") +
-                artist_annotations +
-                annotate("segment", x = 0.5, xend = 0.5, y = 0.18, yend = 0.83,
-                         color = "#333333", linewidth = 0.8) +
-                annotate("text", x = 0.75, y = 0.81,
-                         label = "TOP TRACKS",
-                         color = "#FFFFFF", size = 4.5, fontface = "bold", hjust = 0.5,
-                         family = "sans") +
-                track_annotations +
-                annotate("text", x = 0.5, y = 0.14,
-                         label = paste0("Top Genre: ", top_genre),
-                         color = "#1DB954", size = 4, hjust = 0.5, family = "sans") +
-                annotate("text", x = 0.5, y = 0.05,
-                         label = "trackteller.youcanbeapirate.com",
-                         color = "#666666", size = 3, hjust = 0.5, family = "sans")
-
-            ggsave(file, plot = card, width = 12, height = 6.3, dpi = 100, bg = "#191414")
+            img <- build_stats_card(tracks, username, time_label, "tracks")
+            image_write(img, path = file, format = "png")
         }
     )
 

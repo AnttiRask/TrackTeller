@@ -191,7 +191,7 @@ uiFunc <- function(req) {
                         condition = "output.is_authenticated == true",
                         div(
                             style = "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;",
-                            downloadButton("download_stats_card", "Share My Stats",
+                            downloadButton("download_artists_card", "Share Top Artists",
                                          icon = icon("share-nodes"),
                                          class = "btn-success",
                                          style = "color: #000;"),
@@ -236,7 +236,11 @@ uiFunc <- function(req) {
                         )
                     ),
                     div(
-                        style = "margin-bottom: 16px;",
+                        style = "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;",
+                        downloadButton("download_tracks_card", "Share Top Tracks",
+                                     icon = icon("share-nodes"),
+                                     class = "btn-success",
+                                     style = "color: #000;"),
                         actionButton("create_playlist_tracks", "Create Playlist from Top Tracks",
                                    class = "btn-success", icon = icon("music"))
                     ),
