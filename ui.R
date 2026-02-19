@@ -94,6 +94,7 @@ uiFunc <- function(req) {
 
                 layout_sidebar(
                     sidebar = sidebar(
+                        width = 350,
                         # Show auth controls when not authenticated
                         conditionalPanel(
                             condition = "output.is_authenticated == false",
@@ -150,21 +151,11 @@ uiFunc <- function(req) {
                             p(class = "text-muted small",
                               "Note: Spotify only provides these three time ranges."),
                             br(),
-                            downloadButton("download_stats_card", "Share My Stats",
-                                         icon = icon("share-nodes"),
-                                         class = "btn-outline-secondary btn-sm w-100"),
-                            br(),
                             hr(),
-                            div(
-                                style = "display: flex; align-items: center; gap: 10px;",
-                                textOutput("user_display_name"),
-                                actionButton("refresh_data", NULL,
-                                           icon = icon("rotate-right"),
-                                           class = "btn-outline-secondary btn-sm",
-                                           title = "Refresh data"),
-                                actionButton("logout_btn", "Logout",
-                                           class = "btn-outline-secondary btn-sm")
-                            )
+                            textOutput("user_display_name"),
+                            br(),
+                            actionButton("logout_btn", "Logout",
+                                       class = "btn-outline-secondary btn-sm")
                         )
                     ),
                     # Show welcome message when not authenticated
@@ -198,12 +189,16 @@ uiFunc <- function(req) {
                     # Show artist list when authenticated
                     conditionalPanel(
                         condition = "output.is_authenticated == true",
-                        uiOutput("top_artists_list"),
                         div(
-                            style = "margin-top: 16px;",
+                            style = "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;",
+                            downloadButton("download_stats_card", "Share My Stats",
+                                         icon = icon("share-nodes"),
+                                         class = "btn-success",
+                                         style = "color: #000;"),
                             actionButton("create_playlist_artists", "Create Playlist from Top Artists",
                                        class = "btn-success", icon = icon("music"))
                         ),
+                        uiOutput("top_artists_list"),
                         div(style = "height: 40px;")
                     )
                 )
@@ -215,6 +210,7 @@ uiFunc <- function(req) {
                 value = "top_tracks",
                 layout_sidebar(
                     sidebar = sidebar(
+                        width = 350,
                         h3("Your Top Tracks"),
                         br(),
                         p("Your most played tracks, ranked by listening frequency."),
@@ -239,12 +235,12 @@ uiFunc <- function(req) {
                             step = 5
                         )
                     ),
-                    uiOutput("top_tracks_list"),
                     div(
-                        style = "margin-top: 16px;",
+                        style = "margin-bottom: 16px;",
                         actionButton("create_playlist_tracks", "Create Playlist from Top Tracks",
                                    class = "btn-success", icon = icon("music"))
                     ),
+                    uiOutput("top_tracks_list"),
                     div(style = "height: 40px;")
                 )
             ),
@@ -255,6 +251,7 @@ uiFunc <- function(req) {
                 value = "recently_played",
                 layout_sidebar(
                     sidebar = sidebar(
+                        width = 350,
                         h3("Recently Played"),
                         br(),
                         p("Your most recently played tracks."),
@@ -268,12 +265,12 @@ uiFunc <- function(req) {
                             step = 5
                         )
                     ),
-                    uiOutput("recently_played_list"),
                     div(
-                        style = "margin-top: 16px;",
+                        style = "margin-bottom: 16px;",
                         actionButton("create_playlist_recent", "Create Playlist from Recently Played",
                                    class = "btn-success", icon = icon("music"))
                     ),
+                    uiOutput("recently_played_list"),
                     div(style = "height: 40px;")
                 )
             ),
@@ -284,6 +281,7 @@ uiFunc <- function(req) {
                 value = "top_genres",
                 layout_sidebar(
                     sidebar = sidebar(
+                        width = 350,
                         h3("Your Top Genres"),
                         br(),
                         p("Genre distribution across your top artists."),
@@ -319,6 +317,7 @@ uiFunc <- function(req) {
                 value = "my_playlists",
                 layout_sidebar(
                     sidebar = sidebar(
+                        width = 350,
                         h3("Your Playlists"),
                         br(),
                         p("Browse all your Spotify playlists, filtered by first letter."),

@@ -54,7 +54,7 @@ server <- function(input, output, session) {
         # Get the OAuth code from hidden input (set by UI)
         query <- parseQueryString(session$clientData$url_search)
 
-        if (!is.null(query$code) && is.null(token_info())) {
+        if (!is.null(query$code) && is.null(isolate(token_info()))) {
             tryCatch({
                 # Exchange code for token
                 new_token <- spotify_exchange_code(
@@ -115,16 +115,6 @@ server <- function(input, output, session) {
                 icon("info-circle"),
                 " You have been logged out.")
         })
-    })
-
-    # Handle manual data refresh
-    observeEvent(input$refresh_data, {
-        refresh_trigger(refresh_trigger() + 1)
-        # Reset playlist loader so it re-fetches
-        all_playlists_data(NULL)
-        playlists_done(FALSE)
-        playlists_loading(FALSE)
-        playlists_offset(0)
     })
 
     # Helper function to get a valid access token
@@ -385,7 +375,7 @@ server <- function(input, output, session) {
         })
 
         tags$div(
-            style = "max-height: 700px; overflow-y: auto; padding-right: 10px;",
+            style = "padding-right: 10px;",
             artist_cards
         )
     })
@@ -546,7 +536,7 @@ server <- function(input, output, session) {
         })
 
         tags$div(
-            style = "max-height: 700px; overflow-y: auto; padding-right: 10px;",
+            style = "padding-right: 10px;",
             track_cards
         )
     })
@@ -637,7 +627,7 @@ server <- function(input, output, session) {
         })
 
         tags$div(
-            style = "max-height: 700px; overflow-y: auto; padding-right: 10px;",
+            style = "padding-right: 10px;",
             track_cards
         )
     })
@@ -993,7 +983,7 @@ server <- function(input, output, session) {
                 status_text
             ),
             tags$div(
-                style = "max-height: 700px; overflow-y: auto; padding-right: 10px;",
+                style = "padding-right: 10px;",
                 playlist_cards
             )
         )
@@ -1161,8 +1151,8 @@ server <- function(input, output, session) {
 
         default_name <- switch(source,
             "top_tracks"      = "My Top Tracks",
-            "artist_tracks"   = "Artist Favorites",
-            "recently_played" = "Recently Played"
+            "artist_tracks"   = "My Top Artists",
+            "recently_played" = "My Recently Played"
         )
         name_in <- trimws(input$new_playlist_name)
         playlist_name <- str_glue(
