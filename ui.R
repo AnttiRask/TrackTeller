@@ -68,7 +68,7 @@ uiFunc <- function(req) {
         ),
 
         header = tags$head(
-            tags$link(rel = "shortcut icon", type = "image/png", href = "favicon.png"),
+            tags$link(rel = "icon", type = "image/png", href = "favicon.png"),
             tags$script(src = "www/redirect.js"),
             includeCSS("css/styles.css"),
             # Automatically display a loading screen until UI is ready
