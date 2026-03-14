@@ -1,0 +1,59 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What This Is
+
+TrackTeller is an R Shiny web app that connects to Spotify via OAuth 2.0 to visualize listening habits and create playlists. It's stateless — no database or cache, all data fetched live from the Spotify API. Deployed on Google Cloud Run.
+
+## Development Commands
+
+```bash
+# Local development with Docker (hot-reloads ui.R, server.R, scripts/, css/, www/)
+cp .env.example .env   # first time only, fill in Spotify credentials
+sudo docker compose up --build
+
+# Access at http://127.0.0.1:8080
+
+# Deploy to Google Cloud Run
+./deploy.sh
+
+# Restore R packages locally (if running outside Docker)
+R -e "renv::restore()"
+```
+
+There are no tests or linting configured.
+
+## Architecture
+
+### Entry Point & File Roles
+- `run.R` — boots the Shiny app (sources ui.R and server.R, binds to `0.0.0.0:PORT`)
+- `ui.R` — function-based UI (`uiFunc(req)`) that parses OAuth callback query params and builds a `bslib::page_navbar` with 5 tabs: Top Artists, Top Tracks, Recently Played, Top Genres, My Playlists
+- `server.R` — all server logic: OAuth token exchange, Spotify API calls (`httr::GET/POST`), reactive data fetching, playlist creation, stats card image generation (`magick`)
+- `scripts/spotify_oauth.R` — custom OAuth 2.0 Authorization Code Flow (authorize URL, token exchange, refresh, expiry check with 5-min buffer)
+- `scripts/config.R` — reads env vars (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `APP_URL`), validates config
+- `scripts/global.R` — Spotify brand colors and `theme_spotify()` ggplot theme
+
+### Key Patterns
+- **OAuth flow**: UI passes `code`/`state` via hidden inputs → server exchanges for token → session-scoped `reactiveVal(token_info)` with auto-refresh
+- **Spotify API helper**: `spotify_api_call()` in server.R wraps all API requests with token refresh, pagination, and error handling
+- **Conditional UI**: `conditionalPanel` toggled by `output.is_authenticated` — pre-login shows welcome, post-login shows data
+- **Stats cards**: `magick`-based image composition for shareable 1200×630 PNG cards with Spotify artist/track images
+- **Cross-app footer**: `create_app_footer()` links to sibling apps on youcanbeapirate.com
+
+### Styling
+- `css/styles.css` — Spotify dark theme, mobile-responsive
+- bslib Bootstrap 5 theme configured inline in `ui.R` with Spotify brand colors
+- Font: Gotham via CDN
+
+### Deployment
+- Docker image based on `rocker/shiny:4.3.1`
+- `deploy.sh` handles Secret Manager credential storage, validation (32-char hex), and `gcloud run deploy`
+- `APP_URL` in `.env` is for local dev; `deploy.sh` hardcodes production URL
+- `docs/index.html` is a static GitHub Pages landing page (not part of the Shiny app)
+
+## R Coding Conventions
+
+- Use Tidyverse syntax and packages (dplyr, purrr, stringr, tidyr, ggplot2)
+- Package dependencies managed with `renv` (edit `renv.lock`, not manual installs)
+- `conflicted` library used to resolve namespace clashes (e.g., `dplyr::filter` over `stats::filter`)
