@@ -48,7 +48,9 @@ There are no tests or linting configured.
 
 ### Deployment
 - Docker image based on `rocker/shiny:4.3.1`
-- `deploy.sh` handles Secret Manager credential storage, validation (32-char hex), and `gcloud run deploy`
+- **CI/CD** (`.github/workflows/`): `tests.yml` builds the image and checks that the app starts (a testthat suite comes later); `deploy_shiny_app.yml` runs it first, then deploys with a keyless Workload Identity login as `trackteller-deploy` and smoke-tests the revision's `git-sha` label and `GET /`. It deploys on pushes to `main` that touch `app/**` or the build files, and on demand (Actions tab, or `gh workflow run deploy_shiny_app.yml --ref main`). Actions are pinned to commit SHAs; `dependabot.yml` covers Actions and Docker.
+- The service runs as `trackteller-runtime` (access to the two Spotify secrets only). Setup scripts and the permission test are in `infra/` (`setup_keyless_deploy.sh`, `test_deploy_identity.sh`); the registry cleanup policy is `infra/artifact-registry-cleanup.json`.
+- `deploy.sh` is the manual fallback: Secret Manager credential storage, validation (32-char hex), and `gcloud run deploy` with the same flags as the workflow. Keep the two in sync.
 - `APP_URL` in `.env` is for local dev; `deploy.sh` hardcodes production URL
 - `docs/index.html` is a static GitHub Pages landing page (not part of the Shiny app)
 

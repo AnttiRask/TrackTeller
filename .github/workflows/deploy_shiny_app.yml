@@ -1,0 +1,105 @@
+name: Deploy to Cloud Run
+
+# Deploys on pushes to main that change the app or how it is built (not docs,
+# tests or the plan), and on demand: Actions tab > "Deploy to Cloud Run" > Run
+# workflow. The tests run first and must pass. Keep the service flags in sync
+# with deploy.sh.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "renv.lock"
+      - ".Rprofile"
+      - "renv/activate.R"
+      - "renv/settings.json"
+  workflow_dispatch:
+
+# Never run two deploys at once; a newer push waits for the running one
+concurrency:
+  group: deploy-cloud-run
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# Not secrets: the project id and number appear in every Cloud Run URL
+env:
+  PROJECT_ID: trackteller-app
+  PROJECT_NUMBER: "957085714294"
+  REGION: europe-north1
+  SERVICE: trackteller-app
+  APP_URL: https://trackteller.youcanbeapirate.com
+
+jobs:
+  test:
+    uses: ./.github/workflows/tests.yml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write  # keyless Google Cloud login (Workload Identity Federation)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Only this repo's main branch can use the pool (see the provider's
+      # attribute condition); the account can deploy this one service and nothing else
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: projects/${{ env.PROJECT_NUMBER }}/locations/global/workloadIdentityPools/trackteller/providers/github-oidc
+          service_account: trackteller-deploy@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # No --allow-unauthenticated: the service is already public and the deploy
+      # account may not change IAM. Concurrency stays at Cloud Run's 80 on purpose
+      # (a page load makes many parallel asset requests).
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --project "$PROJECT_ID" \
+            --region "$REGION" \
+            --platform managed \
+            --service-account "trackteller-runtime@$PROJECT_ID.iam.gserviceaccount.com" \
+            --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest" \
+            --set-secrets "SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
+            --set-env-vars "APP_URL=$APP_URL" \
+            --memory 1Gi \
+            --timeout 3600 \
+            --session-affinity \
+            --max-instances 3 \
+            --update-labels "git-sha=${GITHUB_SHA::12}" \
+            --quiet
+
+      - name: Smoke test the deployed service
+        run: |
+          DESCRIBE_FORMAT='value(status.url,metadata.labels.git-sha)'
+          read -r URL LABEL < <(gcloud run services describe "$SERVICE" \
+            --project "$PROJECT_ID" --region "$REGION" --format="$DESCRIBE_FORMAT")
+          echo "Service URL: $URL"
+          echo "Deployed commit label: $LABEL (this run: ${GITHUB_SHA::12})"
+          if [ "$LABEL" != "${GITHUB_SHA::12}" ]; then
+            echo "The service doesn't carry this commit's label"
+            exit 1
+          fi
+          for attempt in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$URL/" || true)
+            echo "Attempt $attempt: HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "OK"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Service did not return HTTP 200"
+          exit 1
