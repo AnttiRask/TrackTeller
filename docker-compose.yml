@@ -11,5 +11,5 @@ services:
       - SHINY_ENV=development
     volumes:
       # Mount for development - allows live code changes
-      - ./app:/srv/shiny-server/app/app
+      - ./app:/app/app
     restart: unless-stopped
