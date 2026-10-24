@@ -39,4 +39,4 @@ ENV PORT=8080
 ENV SHINY_ENV=production
 
 # Run the application
-CMD ["R", "-e", "source('run.R')"]
+CMD ["R", "-e", "source('app/run.R')"]

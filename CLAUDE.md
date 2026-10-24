@@ -9,7 +9,7 @@ TrackTeller is an R Shiny web app that connects to Spotify via OAuth 2.0 to visu
 ## Development Commands
 
 ```bash
-# Local development with Docker (hot-reloads ui.R, server.R, scripts/, css/, www/)
+# Local development with Docker (hot-reloads everything under app/)
 cp .env.example .env   # first time only, fill in Spotify credentials
 sudo docker compose up --build
 
@@ -27,12 +27,12 @@ There are no tests or linting configured.
 ## Architecture
 
 ### Entry Point & File Roles
-- `run.R` — boots the Shiny app (sources ui.R and server.R, binds to `0.0.0.0:PORT`)
-- `ui.R` — function-based UI (`uiFunc(req)`) that parses OAuth callback query params and builds a `bslib::page_navbar` with 5 tabs: Top Artists, Top Tracks, Recently Played, Top Genres, My Playlists
-- `server.R` — all server logic: OAuth token exchange, Spotify API calls (`httr::GET/POST`), reactive data fetching, playlist creation, stats card image generation (`magick`)
-- `scripts/spotify_oauth.R` — custom OAuth 2.0 Authorization Code Flow (authorize URL, token exchange, refresh, expiry check with 5-min buffer)
-- `scripts/config.R` — reads env vars (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `APP_URL`), validates config
-- `scripts/global.R` — Spotify brand colors and `theme_spotify()` ggplot theme
+- `app/run.R` — changes into `app/`, then boots the Shiny app (sources ui.R and server.R, binds to `0.0.0.0:PORT`)
+- `app/ui.R` — function-based UI (`uiFunc(req)`) that parses OAuth callback query params and builds a `bslib::page_navbar` with 5 tabs: Top Artists, Top Tracks, Recently Played, Top Genres, My Playlists
+- `app/server.R` — all server logic: OAuth token exchange, Spotify API calls (`httr::GET/POST`), reactive data fetching, playlist creation, stats card image generation (`magick`)
+- `app/scripts/spotify_oauth.R` — custom OAuth 2.0 Authorization Code Flow (authorize URL, token exchange, refresh, expiry check with 5-min buffer)
+- `app/scripts/config.R` — reads env vars (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `APP_URL`), validates config
+- `app/scripts/global.R` — Spotify brand colors and `theme_spotify()` ggplot theme
 
 ### Key Patterns
 - **OAuth flow**: UI passes `code`/`state` via hidden inputs → server exchanges for token → session-scoped `reactiveVal(token_info)` with auto-refresh
@@ -42,8 +42,8 @@ There are no tests or linting configured.
 - **Cross-app footer**: `create_app_footer()` links to sibling apps on youcanbeapirate.com
 
 ### Styling
-- `css/styles.css` — Spotify dark theme, mobile-responsive
-- bslib Bootstrap 5 theme configured inline in `ui.R` with Spotify brand colors
+- `app/css/styles.css` — Spotify dark theme, mobile-responsive
+- bslib Bootstrap 5 theme configured inline in `app/ui.R` with Spotify brand colors
 - Font: Gotham via CDN
 
 ### Deployment

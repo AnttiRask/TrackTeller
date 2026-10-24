@@ -1,5 +1,8 @@
 library(shiny)
 
+# Run from the app directory so ui.R, server.R, scripts/, css/ and www/ resolve
+setwd("app")
+
 # Source the UI and server files
 source("ui.R")
 source("server.R")

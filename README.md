@@ -26,18 +26,19 @@
 
 ```text
 TrackTeller/
-├── ui.R                     # Function-based UI (5 tabs + OAuth callback handling)
-├── server.R                 # Server logic (Spotify API + visualizations + stats cards)
-├── run.R                    # App entry point
-├── scripts/
-│   ├── spotify_oauth.R      # Custom OAuth 2.0 implementation
-│   ├── config.R             # Environment-based configuration
-│   └── global.R             # Shared helpers (ggplot theme, colors)
-├── css/
-│   └── styles.css           # Spotify dark theme + mobile responsiveness
-├── www/
-│   ├── redirect.js          # JavaScript for OAuth redirects
-│   └── favicon.png          # App favicon
+├── app/                     # Everything that goes into the Docker image
+│   ├── ui.R                 # Function-based UI (5 tabs + OAuth callback handling)
+│   ├── server.R             # Server logic (Spotify API + visualizations + stats cards)
+│   ├── run.R                # App entry point
+│   ├── scripts/
+│   │   ├── spotify_oauth.R  # Custom OAuth 2.0 implementation
+│   │   ├── config.R         # Environment-based configuration
+│   │   └── global.R         # Shared helpers (ggplot theme, colors)
+│   ├── css/
+│   │   └── styles.css       # Spotify dark theme + mobile responsiveness
+│   └── www/
+│       ├── redirect.js      # JavaScript for OAuth redirects
+│       └── favicon.png      # App favicon
 ├── docs/
 │   └── index.html           # Static landing page (GitHub Pages)
 ├── Dockerfile               # Container definition (rocker/shiny:4.3.1 + magick)
