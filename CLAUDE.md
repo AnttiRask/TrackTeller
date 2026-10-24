@@ -18,8 +18,8 @@ sudo docker compose up --build
 # Deploy to Google Cloud Run
 ./deploy.sh
 
-# Restore R packages locally (if running outside Docker)
-R -e "renv::restore()"
+# Packages are restored inside the Docker image; renv::restore() on a machine whose R
+# version differs from renv.lock (4.5.2) may not work
 ```
 
 There are no tests or linting configured.
@@ -47,7 +47,8 @@ There are no tests or linting configured.
 - Font: Gotham via CDN
 
 ### Deployment
-- Docker image based on `rocker/shiny:4.3.1`
+- Docker image based on `rocker/r-ver:4.5.2` (R version matches `renv.lock`): system libraries for `magick` and the share-card font, packages restored from Posit Package Manager's Linux binaries, non-root user `trackteller`, started with `Rscript app/run.R`. `.dockerignore` is an allowlist.
+- **Changing R packages:** regenerate `renv.lock` inside the image's base with `infra/regenerate_renv_lock.sh` (keep its package list in sync with the `library()` calls). Don't snapshot on the laptop: local R is 4.6.1, the lock is for 4.5.2, and `renv::restore()` won't work here.
 - **CI/CD** (`.github/workflows/`): `tests.yml` builds the image and checks that the app starts (a testthat suite comes later); `deploy_shiny_app.yml` runs it first, then deploys with a keyless Workload Identity login as `trackteller-deploy` and smoke-tests the revision's `git-sha` label and `GET /`. It deploys on pushes to `main` that touch `app/**` or the build files, and on demand (Actions tab, or `gh workflow run deploy_shiny_app.yml --ref main`). Actions are pinned to commit SHAs; `dependabot.yml` covers Actions and Docker.
 - The service runs as `trackteller-runtime` (access to the two Spotify secrets only). Setup scripts and the permission test are in `infra/` (`setup_keyless_deploy.sh`, `test_deploy_identity.sh`); the registry cleanup policy is `infra/artifact-registry-cleanup.json`.
 - `deploy.sh` is the manual fallback: Secret Manager credential storage, validation (32-char hex), and `gcloud run deploy` with the same flags as the workflow. Keep the two in sync.
