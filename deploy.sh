@@ -110,8 +110,11 @@ gcloud run deploy "$SERVICE_NAME" \
     --allow-unauthenticated \
     --set-secrets "SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest,SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest" \
     --set-env-vars "APP_URL=$PRODUCTION_URL" \
+    --service-account "trackteller-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
     --memory 1Gi \
-    --timeout 300
+    --timeout 3600 \
+    --session-affinity \
+    --max-instances 3
 
 echo ""
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
