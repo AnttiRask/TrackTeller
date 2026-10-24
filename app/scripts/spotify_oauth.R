@@ -1,8 +1,7 @@
 # Spotify OAuth 2.0 Authorization Code Flow
 # Custom implementation for web deployment
 
-library(httr)
-library(jsonlite)
+library(httr2)
 
 # Spotify OAuth endpoints
 SPOTIFY_AUTH_URL <- "https://accounts.spotify.com/authorize"
@@ -36,64 +35,97 @@ spotify_authorize_url <- function(client_id, redirect_uri, scope, state = NULL) 
     )
 }
 
-# Exchange authorization code for access token
-spotify_exchange_code <- function(code, client_id, client_secret, redirect_uri) {
-    response <- POST(
-        SPOTIFY_TOKEN_URL,
-        body = list(
-            grant_type = "authorization_code",
-            code = code,
-            redirect_uri = redirect_uri,
-            client_id = client_id,
-            client_secret = client_secret
-        ),
-        encode = "form"
+# POST to Spotify's token endpoint. Returns list(state, token, message), never throws:
+#   state "ok"     token is list(access_token, token_type, expires_in, refresh_token,
+#                  scope, expires_at)
+#         "reauth" Spotify rejected the code or refresh token (expired, used twice,
+#                  or revoked): the user has to log in again
+#         "error"  network failure, timeout or an unexpected answer
+# message is a plain sentence for the user; Spotify's response body is never
+# passed on (the log gets the status code only).
+spotify_token_request <- function(params, previous_refresh_token = NULL,
+                                  token_url = SPOTIFY_TOKEN_URL, timeout = 10,
+                                  max_tries = 3, backoff = NULL) {
+    resp <- tryCatch(
+        request(token_url) |>
+            req_user_agent("TrackTeller (https://trackteller.youcanbeapirate.com)") |>
+            req_body_form(!!!params) |>
+            req_timeout(timeout) |>
+            req_retry(
+                max_tries        = max_tries,
+                retry_on_failure = TRUE,
+                is_transient     = \(r) resp_status(r) %in% c(429L, 500L, 502L, 503L, 504L),
+                backoff          = backoff
+            ) |>
+            req_perform(),
+        httr2_http = function(e) e$resp,
+        error = function(e) e
     )
 
-    if (status_code(response) != 200) {
-        error_content <- content(response, "text", encoding = "UTF-8")
-        stop(paste("Token exchange failed:", error_content))
+    if (inherits(resp, "error")) {
+        message("[spotify] token request -> no response")
+        return(list(state = "error", token = NULL,
+                    message = "Couldn't reach Spotify. Please try again."))
     }
 
-    token_data <- content(response, "parsed")
+    status <- resp_status(resp)
+    if (status != 200) {
+        message("[spotify] token request -> ", status)
+        if (status %in% c(400L, 401L)) {
+            return(list(state = "reauth", token = NULL,
+                        message = "Spotify didn't accept this login. Please try logging in again."))
+        }
+        return(list(state = "error", token = NULL,
+                    message = "Couldn't reach Spotify. Please try again."))
+    }
+
+    data <- tryCatch(resp_body_json(resp, simplifyVector = FALSE), error = function(e) NULL)
+    if (is.null(data$access_token) || is.null(data$expires_in)) {
+        message("[spotify] token request -> 200 without an access token")
+        return(list(state = "error", token = NULL,
+                    message = "Couldn't reach Spotify. Please try again."))
+    }
 
     list(
-        access_token = token_data$access_token,
-        token_type = token_data$token_type,
-        expires_in = token_data$expires_in,
-        refresh_token = token_data$refresh_token,
-        scope = token_data$scope,
-        expires_at = Sys.time() + token_data$expires_in
+        state = "ok",
+        token = list(
+            access_token  = data$access_token,
+            token_type    = data$token_type,
+            expires_in    = data$expires_in,
+            # Spotify may leave the refresh token out of a refresh: keep the old one
+            refresh_token = data$refresh_token %||% previous_refresh_token,
+            scope         = data$scope,
+            expires_at    = Sys.time() + data$expires_in
+        ),
+        message = NULL
+    )
+}
+
+# Exchange authorization code for access token
+spotify_exchange_code <- function(code, client_id, client_secret, redirect_uri, ...) {
+    spotify_token_request(
+        list(
+            grant_type    = "authorization_code",
+            code          = code,
+            redirect_uri  = redirect_uri,
+            client_id     = client_id,
+            client_secret = client_secret
+        ),
+        ...
     )
 }
 
 # Refresh an expired access token
-spotify_refresh_token <- function(refresh_token, client_id, client_secret) {
-    response <- POST(
-        SPOTIFY_TOKEN_URL,
-        body = list(
-            grant_type = "refresh_token",
+spotify_refresh_token <- function(refresh_token, client_id, client_secret, ...) {
+    spotify_token_request(
+        list(
+            grant_type    = "refresh_token",
             refresh_token = refresh_token,
-            client_id = client_id,
+            client_id     = client_id,
             client_secret = client_secret
         ),
-        encode = "form"
-    )
-
-    if (status_code(response) != 200) {
-        error_content <- content(response, "text", encoding = "UTF-8")
-        stop(paste("Token refresh failed:", error_content))
-    }
-
-    token_data <- content(response, "parsed")
-
-    list(
-        access_token = token_data$access_token,
-        token_type = token_data$token_type,
-        expires_in = token_data$expires_in,
-        refresh_token = if (!is.null(token_data$refresh_token)) token_data$refresh_token else refresh_token,
-        scope = token_data$scope,
-        expires_at = Sys.time() + token_data$expires_in
+        previous_refresh_token = refresh_token,
+        ...
     )
 }
 
@@ -103,48 +135,4 @@ token_is_expired <- function(token_info) {
         return(TRUE)
     }
     Sys.time() >= (token_info$expires_at - 300)
-}
-
-# Get valid access token, refreshing if needed
-get_valid_token <- function(token_info, client_id, client_secret) {
-    if (is.null(token_info)) {
-        return(NULL)
-    }
-
-    if (token_is_expired(token_info)) {
-        if (!is.null(token_info$refresh_token)) {
-            token_info <- spotify_refresh_token(
-                token_info$refresh_token,
-                client_id,
-                client_secret
-            )
-        } else {
-            return(NULL)
-        }
-    }
-
-    token_info
-}
-
-# Parse the callback URL to extract code and state
-parse_callback <- function(query_string) {
-    if (is.null(query_string) || query_string == "") {
-        return(list(code = NULL, state = NULL, error = NULL))
-    }
-
-    params <- strsplit(query_string, "&")[[1]]
-    parsed <- list()
-
-    for (param in params) {
-        parts <- strsplit(param, "=")[[1]]
-        if (length(parts) == 2) {
-            parsed[[parts[1]]] <- URLdecode(parts[2])
-        }
-    }
-
-    list(
-        code = parsed$code,
-        state = parsed$state,
-        error = parsed$error
-    )
 }

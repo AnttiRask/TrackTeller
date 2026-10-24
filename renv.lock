@@ -393,6 +393,26 @@
       ],
       "Hash": "bc0b2d531d78701c4cd1221adbf052ce"
     },
+    "httr2": {
+      "Package": "httr2",
+      "Version": "1.3.0",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "R6",
+        "cli",
+        "curl",
+        "glue",
+        "lifecycle",
+        "magrittr",
+        "openssl",
+        "rlang",
+        "vctrs",
+        "withr"
+      ],
+      "Hash": "f4d796ba71b073f7bc95da858caded00"
+    },
     "isoband": {
       "Package": "isoband",
       "Version": "0.3.0",
