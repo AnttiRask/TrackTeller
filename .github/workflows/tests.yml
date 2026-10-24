@@ -1,16 +1,17 @@
 name: Tests
 
-# There is no testthat suite yet (it comes with the API layer), so for now this
-# is a build-and-start check of the production image: the image builds from
-# renv.lock, the app starts, and the page and its assets answer. Runs on pull
-# requests, on pushes that change this file, on demand, and as the first job of
-# the deploy workflow (which only deploys if it passes). Needs no keys and no
-# Google Cloud.
+# Builds the production image, runs the testthat suite inside it (so the tests see
+# the exact R and package versions that run in production; mocked HTTP and a local
+# test server, no keys, no Google Cloud), and checks that the app starts and serves
+# its page and assets. Runs on pull requests, on pushes that change the tests or
+# this file, on demand, and as the first job of the deploy workflow (which only
+# deploys if it passes).
 on:
   pull_request:
   push:
     branches: [main]
     paths:
+      - "tests/**"
       - ".github/workflows/tests.yml"
   workflow_dispatch:
   workflow_call:
@@ -19,7 +20,7 @@ permissions:
   contents: read
 
 jobs:
-  build-and-start:
+  build-and-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
 
@@ -29,6 +30,9 @@ jobs:
 
       - name: Build the production image
         run: docker build -t trackteller-ci .
+
+      - name: Run the unit tests inside the image
+        run: tests/run_in_docker.sh trackteller-ci
 
       # No Spotify credentials: the page and its assets don't need them
       - name: Start the app and check it answers
