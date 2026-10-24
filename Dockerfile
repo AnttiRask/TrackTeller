@@ -1,5 +1,5 @@
 # Use rocker/shiny as base image
-FROM rocker/shiny:4.3.1
+FROM rocker/shiny:4.6.1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
