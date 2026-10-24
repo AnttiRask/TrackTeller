@@ -36,7 +36,7 @@ theme_spotify <- function(){
                 fill  = color.background,
                 color = color.background
             ),
-            panel.border       = element_rect(color = color.background),
+            panel.border       = element_rect(fill = NA, color = color.background),
             panel.grid.major   = element_line(
                 color     = color.grid.major,
                 linewidth = 0.4,
