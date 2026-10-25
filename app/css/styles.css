@@ -143,14 +143,38 @@ p {
 
 .playlist-pager {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 14px;
+    gap: 8px;
     margin: 4px 0 12px 0;
 }
 
-.playlist-pager-label {
+.playlist-pager-goto {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 6px;
     color: #b3b3b3;
     font-size: 0.9em;
+}
+
+.playlist-pager-goto .form-group,
+.playlist-pager-goto .shiny-input-container {
+    margin: 0 !important;
+    width: auto !important;
+}
+
+.playlist-pager-goto input.form-control {
+    width: 72px;
+    height: 30px;
+    padding: 2px 6px;
+    text-align: center;
+}
+
+.playlist-warning {
+    color: #FFD700;
+    font-size: 0.9em;
+    margin: 0 0 10px 0;
 }
 
 /* The line under a list: "Showing 20 of 50 artists" */

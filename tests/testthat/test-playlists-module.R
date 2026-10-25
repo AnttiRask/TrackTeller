@@ -4,7 +4,7 @@ source(file.path(app_dir, "scripts", "playlists_module.R"))
 
 # A fake Spotify with `n` playlists, 50 to a page, that remembers how often it was asked.
 # `fail_at` makes the request for that offset fail.
-fake_spotify <- function(n, names = NULL, fail_at = NULL, duplicate_first_of_page_two = FALSE) {
+fake_spotify <- function(n, names = NULL, fail_at = NULL, duplicate_first_of_page_two = FALSE, shift_after_first = FALSE) {
     if (is.null(names)) {
         names <- sprintf("%s playlist %04d",
                          c("Zebra", "Mix", "Apple", "99 Songs", "Ääni", "banana")[(seq_len(n) %% 6) + 1],
@@ -22,7 +22,12 @@ fake_spotify <- function(n, names = NULL, fail_at = NULL, duplicate_first_of_pag
         if (!is.null(fail_at) && offset == fail_at) {
             return(list(state = "error", data = NULL, http_status = 500L, message = "Couldn't get this from Spotify. Please try again."))
         }
-        idx <- seq_len(n)[seq_len(n) > offset & seq_len(n) <= offset + query$limit]
+        # shift_after_first: after the first page one playlist (the last) moves to the top of Spotify's
+        # list, as when a playlist is played or created while we page through: every later page moves by one
+        order <- seq_len(n)
+        if (shift_after_first && env$calls > 1L) order <- c(n, seq_len(n - 1L))
+        positions <- seq_len(n)[seq_len(n) > offset & seq_len(n) <= offset + query$limit]
+        idx <- order[positions]
         items <- lapply(idx, function(i) list(
             id = ids[i], name = names[i], owner = list(display_name = "Pat"), public = (i %% 2 == 0),
             tracks = list(total = i), images = list(), external_urls = list(spotify = paste0("https://open.spotify.com/playlist/", ids[i]))
@@ -46,6 +51,7 @@ finish_loading <- function(session, status, max_steps = 600) {
         turn(session, 0.02)
         if (!status() %in% c("loading")) break
     }
+    session$flushReact()      # the outputs catch up with the last change
 }
 
 args_for <- function(api, authenticated = TRUE, active = TRUE, ...) {
@@ -268,7 +274,7 @@ test_that("the pager knows the page count from the first answer", {
         session$flushReact(); turn(session)
         expect_equal(shown_total(), 4213L)
         expect_equal(playlist_page_count(shown_total(), 50), 85L)
-        expect_equal(output$label_top, "Page 1 of 85")
+        expect_equal(output$of_top, "85")
         expect_true(pager_visible())
         expect_match(output$list$html, "of 4,213 playlists")
     })
@@ -279,15 +285,16 @@ test_that("Previous is off on the first page and Next on the last", {
     testServer(playlists_server, args = args_for(api), {
         finish_loading(session, status)
         session$setInputs(letter = "all")
-        expect_equal(buttons_off(), list(prev = TRUE, `next` = FALSE))
+        expect_equal(buttons_off(), list(first = TRUE, prev = TRUE, `next` = FALSE, last = FALSE))
 
         session$setInputs(next_top = 1)
-        expect_equal(buttons_off(), list(prev = FALSE, `next` = FALSE))
+        expect_equal(buttons_off(), list(first = FALSE, prev = FALSE, `next` = FALSE, last = FALSE))
         session$setInputs(next_top = 2)
         expect_equal(page(), 3L)
-        expect_equal(buttons_off(), list(prev = FALSE, `next` = TRUE))
-        expect_equal(output$label_top, "Page 3 of 3")
-        expect_equal(output$label_bottom, "Page 3 of 3")
+        expect_equal(buttons_off(), list(first = FALSE, prev = FALSE, `next` = TRUE, last = TRUE))
+        expect_equal(current_page(), 3L)
+        expect_equal(output$of_top, "3")
+        expect_equal(output$of_bottom, "3")
     })
 })
 
@@ -472,5 +479,123 @@ test_that("logging out empties the copy in memory and in the browser, and the ne
 
         auth(TRUE); session$flushReact()
         expect_length(log$of_type("playlist_cache_load"), 2)
+    })
+})
+
+# ---- jumping to a page, the banner, the spacing, a list that changes while it loads ----
+
+test_that("a page can be opened by number, and the first and last buttons work", {
+    api <- fake_spotify(1300)       # 26 pages
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        session$setInputs(letter = "all")
+        expect_equal(playlist_page_count(available(), 50), 26L)
+
+        session$setInputs(goto_top = 17)
+        expect_equal(page(), 17L)
+        session$setInputs(goto_bottom = 26)
+        expect_equal(page(), 26L)
+        session$setInputs(goto_top = 99)         # past the end: the last page
+        expect_equal(page(), 26L)
+        session$setInputs(goto_top = 0)          # before the start: the first
+        expect_equal(page(), 1L)
+        session$setInputs(goto_top = 5)
+        session$setInputs(goto_top = NA)         # nonsense changes nothing
+        expect_equal(page(), 5L)
+
+        session$setInputs(last_top = 1)
+        expect_equal(page(), 26L)
+        session$setInputs(first_bottom = 1)
+        expect_equal(page(), 1L)
+        session$setInputs(last_bottom = 1)
+        expect_equal(page(), 26L)
+        expect_equal(buttons_off(), list(first = FALSE, prev = FALSE, `next` = TRUE, last = TRUE))
+        expect_equal(output$of_top, "26")
+    })
+})
+
+test_that("while loading, a page can only be opened once it has arrived", {
+    api <- fake_spotify(1000)
+    testServer(playlists_server, args = args_for(api), {
+        session$flushReact(); turn(session)
+        for (i in 1:2) turn(session, 0.02)
+        arrived <- last_page()
+        expect_lt(arrived, 20L)
+        session$setInputs(goto_top = 20)
+        expect_equal(page(), arrived)             # not past what has arrived
+        expect_equal(output$of_top, "20")         # but the page count is already known
+    })
+})
+
+test_that("the banner has a state and text that changes, and is not rebuilt", {
+    api <- fake_spotify(120)
+    testServer(playlists_server, args = args_for(api), {
+        expect_equal(banner_state(), "none")
+        session$flushReact(); turn(session)
+        expect_equal(banner_state(), "loading")
+        expect_match(output$banner_text, "^Loading your playlists… 50 of 120$")
+        finish_loading(session, status)
+        expect_equal(banner_state(), "none")
+    })
+    api <- fake_spotify(120, fail_at = 50)
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        expect_equal(banner_state(), "failed")
+        expect_match(output$failed_text, "Couldn't load all your playlists \\(50 so far\\)")
+    })
+})
+
+test_that("the cards sit in a container of their own, so that the page's gap doesn't add to their margin", {
+    api <- fake_spotify(120)
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        session$setInputs(letter = "all")
+        expect_match(output$list$html, 'class="playlist-cards"', fixed = TRUE)
+        expect_equal(lengths(regmatches(output$list$html, gregexpr('class="playlist-card"', output$list$html))), 50L)
+    })
+})
+
+test_that("a list that changes while it loads is reported, not hidden", {
+    # Spotify counted 1,000; one playlist moved to the top after the first page, so one was
+    # seen twice and one never: 999 arrive
+    api <- fake_spotify(1000, shift_after_first = TRUE)
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        expect_equal(status(), "done")
+        expect_equal(total(), 1000L)
+        expect_equal(nrow(all_data()), 999L)
+        expect_equal(missing_count(), 1L)
+        expect_match(output$sync_note$html, "Spotify says you have 1,000 playlists, but 999 arrived")
+        expect_match(output$sync_note$html, "Reload playlists")
+    })
+
+    api <- fake_spotify(1000)
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        expect_equal(missing_count(), 0L)
+        expect_false(grepl("arrived", output$sync_note$html %||% ""))
+    })
+})
+
+test_that("reloading keeps the list on screen while the new one loads, and replaces it", {
+    api <- fake_spotify(120)
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        session$setInputs(letter = "all")
+        before <- all_data()$id
+
+        session$setInputs(reload = 1)
+        session$flushReact()
+        expect_equal(status(), "loading")
+        expect_true(cache_present())                # the finished list stands in meanwhile
+        expect_equal(all_data()$id, before)
+        expect_equal(shown_total(), 120L)
+        expect_match(output$banner_text, "^Refreshing your playlists")     # not "saved in this browser"
+
+        finish_loading(session, status)
+        expect_equal(status(), "done")
+        expect_false(cache_present())
+        expect_equal(nrow(all_data()), 120)
+        expect_equal(api$calls, 6L)                  # 3 pages, twice
     })
 })

@@ -59,18 +59,31 @@ playlist_card <- function(playlist) {
 
 # The pager's buttons are created once and only updated afterwards: a button that is
 # re-created by renderUI starts counting from 0 again, and a click can then send a value
-# that Shiny sees as unchanged and ignores.
+# that Shiny sees as unchanged and ignores. The same goes for the banner: re-creating it for
+# every count made its spinner start over, which looked like flashing.
 playlist_pager_ui <- function(ns, where) {
+    green <- "btn-success btn-sm"
+    dark_text <- "color: #191414;"
     conditionalPanel(
         condition = "output.show_pager",
         ns = ns,
         div(
             class = "playlist-pager",
-            actionButton(ns(paste0("prev_", where)), "Previous", icon = icon("chevron-left"),
-                         class = "btn-outline-secondary btn-sm", disabled = TRUE),
-            span(class = "playlist-pager-label", textOutput(ns(paste0("label_", where)), inline = TRUE)),
-            actionButton(ns(paste0("next_", where)), "Next", icon = icon("chevron-right"),
-                         class = "btn-outline-secondary btn-sm", disabled = TRUE)
+            actionButton(ns(paste0("first_", where)), "", icon = icon("angles-left"), class = green, style = dark_text,
+                         title = "First page", `aria-label` = "First page", disabled = TRUE),
+            actionButton(ns(paste0("prev_", where)), "Previous", icon = icon("chevron-left"), class = green,
+                         style = dark_text, disabled = TRUE),
+            span(
+                class = "playlist-pager-goto",
+                "Page",
+                numericInput(ns(paste0("goto_", where)), NULL, value = 1, min = 1, step = 1, width = "80px"),
+                "of",
+                textOutput(ns(paste0("of_", where)), inline = TRUE)
+            ),
+            actionButton(ns(paste0("next_", where)), "Next", icon = icon("chevron-right"), class = green,
+                         style = dark_text, disabled = TRUE),
+            actionButton(ns(paste0("last_", where)), "", icon = icon("angles-right"), class = green, style = dark_text,
+                         title = "Last page", `aria-label` = "Last page", disabled = TRUE)
         )
     )
 }
@@ -91,10 +104,27 @@ playlists_ui <- function(id) {
                 choices = c("All playlists" = "all"),
                 selected = "all"
             ),
+            actionButton(ns("reload"), "Reload playlists", icon = icon("rotate"),
+                         class = "btn-outline-success btn-sm"),
             uiOutput(ns("sidebar_note")),
             create_app_footer("trackteller")
         ),
-        uiOutput(ns("progress")),
+        # The banners are there once; only their text changes (see playlist_pager_ui)
+        conditionalPanel(
+            condition = "output.banner_state == 'loading'",
+            ns = ns,
+            div(class = "playlist-banner",
+                div(class = "playlist-spinner"),
+                span(textOutput(ns("banner_text"), inline = TRUE)))
+        ),
+        conditionalPanel(
+            condition = "output.banner_state == 'failed'",
+            ns = ns,
+            div(class = "playlist-banner playlist-banner-error",
+                span(textOutput(ns("failed_text"), inline = TRUE)),
+                actionButton(ns("retry"), "Try again", class = "btn-outline-secondary btn-sm"))
+        ),
+        uiOutput(ns("sync_note")),
         playlist_pager_ui(ns, "top"),
         uiOutput(ns("list")),
         playlist_pager_ui(ns, "bottom"),
@@ -133,9 +163,11 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         cached <- new.env()
         cached$data <- NULL
         cache_present <- reactiveVal(FALSE)
+        cache_from_browser <- reactiveVal(TRUE)  # the copy on screen: from the browser, or the list that was already here
         cache_requested <- reactiveVal(FALSE)  # once per login
 
         status <- reactiveVal("idle")          # idle | loading | done | failed
+        missing_count <- reactiveVal(0L)       # how many Spotify counted that never arrived
         loaded <- reactiveVal(0L)              # how many have arrived
         total <- reactiveVal(NA_integer_)      # how many there are, once Spotify has said
         version <- reactiveVal(0L)             # bumped when what is shown has changed
@@ -214,6 +246,11 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
                         # A playlist added while we were loading shifts the pages: keep each once
                         fetched$data <- dplyr::distinct(fetched$data, id, .keep_all = TRUE)
                         loaded(nrow(fetched$data))
+                        # Spotify's list can change while we page through it (a playlist played,
+                        # created or removed): a page boundary then moves, one playlist is seen
+                        # twice and another is never seen. Say so, don't pretend.
+                        reported <- isolate(total())
+                        missing_count(if (!is.na(reported) && nrow(fetched$data) < reported) reported - nrow(fetched$data) else 0L)
                         had_copy <- !is.null(cached$data)
                         status("done")
                         cached$data <- NULL
@@ -246,6 +283,13 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         }
 
         start_loading <- function() {
+            # Reloading a finished list: keep it on screen, like a saved copy, while the new one loads
+            if (isolate(status()) == "done" && !is.null(shown$data)) {
+                cached$data <- shown$data
+                cache_from_browser(FALSE)
+                cache_present(TRUE)
+            }
+            missing_count(0L)
             reset_data()
             loaded(0L)
             total(NA_integer_)
@@ -262,6 +306,8 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         })
 
         observeEvent(input$retry, start_loading())
+        observeEvent(input$reload, start_loading())
+        observe(updateActionButton(session, "reload", disabled = status() == "loading"))
 
         # ---- the copy kept in the browser ----
 
@@ -284,6 +330,7 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
             data <- sanitise_cached_playlists(input$cache$items)
             if (is.null(data)) return()
             cached$data <- playlist_sort(data)
+            cache_from_browser(TRUE)
             cache_present(TRUE)
             refresh_shown()
         })
@@ -335,63 +382,83 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
 
         # ---- paging ----
 
-        observeEvent(list(input$prev_top, input$prev_bottom), {
-            page(max(1L, page() - 1L))
-        }, ignoreInit = TRUE)
+        # The last page that can be opened: while loading, what has arrived so far
+        last_page <- reactive(playlist_page_count(available(), page_size))
+        current_page <- reactive(min(page(), last_page()))
 
-        observeEvent(list(input$next_top, input$next_bottom), {
-            last <- playlist_page_count(available(), page_size)
-            page(min(last, page() + 1L))
-        }, ignoreInit = TRUE)
+        # Open a page by number; out of range goes to the nearest one, and the boxes show where we ended up
+        go_to <- function(value) {
+            number <- suppressWarnings(as.integer(value))
+            if (length(number) != 1 || is.na(number)) return(invisible(NULL))
+            target <- min(max(1L, number), last_page())
+            page(target)
+            for (where in c("top", "bottom")) updateNumericInput(session, paste0("goto_", where), value = target)
+        }
+        observeEvent(input$goto_top, go_to(input$goto_top), ignoreInit = TRUE)
+        observeEvent(input$goto_bottom, go_to(input$goto_bottom), ignoreInit = TRUE)
+
+        observeEvent(list(input$first_top, input$first_bottom), page(1L), ignoreInit = TRUE)
+        observeEvent(list(input$prev_top, input$prev_bottom), page(max(1L, page() - 1L)), ignoreInit = TRUE)
+        observeEvent(list(input$next_top, input$next_bottom), page(min(last_page(), page() + 1L)), ignoreInit = TRUE)
+        observeEvent(list(input$last_top, input$last_bottom), page(last_page()), ignoreInit = TRUE)
 
         # The pager: shown when there is more than a page (while loading: when there will be)
         pager_visible <- reactive(shown_total() > page_size)
         output$show_pager <- pager_visible
 
-        current_page <- reactive(min(page(), playlist_page_count(available(), page_size)))
-
         # While loading, the pager already knows how many pages there will be
-        page_label <- reactive({
-            paste0("Page ", format(current_page(), big.mark = ","), " of ",
-                   format(playlist_page_count(shown_total(), page_size), big.mark = ","))
+        pages_in_all <- reactive(format(playlist_page_count(shown_total(), page_size), big.mark = ","))
+        output$of_top <- renderText(pages_in_all())
+        output$of_bottom <- renderText(pages_in_all())
+
+        # The page boxes follow the page (and the number of pages that can be opened)
+        observeEvent(list(current_page(), last_page()), {
+            for (where in c("top", "bottom")) {
+                updateNumericInput(session, paste0("goto_", where), value = current_page(), max = last_page())
+            }
         })
-        output$label_top <- renderText(page_label())
-        output$label_bottom <- renderText(page_label())
 
         # Which buttons are off: only sent to the browser when it changes
-        buttons_off <- reactiveVal(list(prev = TRUE, `next` = TRUE))
+        buttons_off <- reactiveVal(list(first = TRUE, prev = TRUE, `next` = TRUE, last = TRUE))
         observe({
-            now <- list(prev = current_page() <= 1,
-                        `next` = current_page() >= playlist_page_count(available(), page_size))
+            at_start <- current_page() <= 1
+            at_end <- current_page() >= last_page()
+            now <- list(first = at_start, prev = at_start, `next` = at_end, last = at_end)
             if (!identical(now, isolate(buttons_off()))) buttons_off(now)
         })
         observeEvent(buttons_off(), {
             for (where in c("top", "bottom")) {
-                updateActionButton(session, paste0("prev_", where), disabled = buttons_off()$prev)
-                updateActionButton(session, paste0("next_", where), disabled = buttons_off()$`next`)
+                for (button in c("first", "prev", "next", "last")) {
+                    updateActionButton(session, paste0(button, "_", where), disabled = buttons_off()[[button]])
+                }
             }
         })
 
         # ---- what is on screen ----
 
-        output$progress <- renderUI({
-            st <- status()
-            if (st == "loading") {
-                tags$div(
-                    class = "playlist-banner",
-                    tags$div(class = "playlist-spinner"),
-                    tags$span(
-                        if (cache_present()) "Showing the copy saved in this browser while your playlists refresh… "
-                        else "Loading your playlists… ",
-                        format(loaded(), big.mark = ","),
-                        if (!is.na(total())) paste0(" of ", format(total(), big.mark = ","))
-                    )
-                )
-            } else if (st == "failed") {
-                tags$div(
-                    class = "playlist-banner playlist-banner-error",
-                    tags$span(paste0("Couldn't load all your playlists (", format(loaded(), big.mark = ","), " so far). ")),
-                    actionButton(ns("retry"), "Try again", class = "btn-outline-secondary btn-sm")
+        # Only the text changes while loading; the banner itself stays (no flashing)
+        banner_state <- reactive(switch(status(), loading = "loading", failed = "failed", "none"))
+        output$banner_state <- banner_state
+        output$banner_text <- renderText({
+            paste0(
+                if (cache_present() && cache_from_browser()) "Showing the copy saved in this browser while your playlists refresh\u2026 "
+                else if (cache_present()) "Refreshing your playlists\u2026 "
+                else "Loading your playlists\u2026 ",
+                format(loaded(), big.mark = ","),
+                if (!is.na(total())) paste0(" of ", format(total(), big.mark = ","))
+            )
+        })
+        output$failed_text <- renderText({
+            paste0("Couldn't load all your playlists (", format(loaded(), big.mark = ","), " so far). ")
+        })
+
+        output$sync_note <- renderUI({
+            if (status() == "done" && missing_count() > 0) {
+                tags$p(
+                    class = "playlist-warning",
+                    paste0("Spotify says you have ", format(total(), big.mark = ","), " playlists, but ",
+                           format(loaded(), big.mark = ","), " arrived: your list changed while it was loading. ",
+                           "Use \"Reload playlists\" to load it again.")
                 )
             }
         })
@@ -411,9 +478,15 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
             current <- min(page(), playlist_page_count(nrow(data), page_size))
             rows <- playlist_page(data, current, page_size)
 
+            # The cards in one container of their own: Shiny's output div is transparent to the
+            # layout, so without it the page's 24 px gap would come on top of each card's margin
             tagList(
                 tags$p(class = "list-note", playlist_range_note(current, page_size, shown_total())),
-                lapply(seq_len(nrow(rows)), function(i) playlist_card(rows[i, ]))
+                tags$div(
+                    class = "playlist-cards",
+                    style = "padding-right: 10px;",
+                    lapply(seq_len(nrow(rows)), function(i) playlist_card(rows[i, ]))
+                )
             )
         })
 
@@ -421,7 +494,8 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         # switch sends one just before the tab is shown; nothing re-checks until the next
         # input. Here nothing else is sent while the playlists load, so the page would stay
         # empty until the very end. These outputs are small: compute them whatever Shiny thinks.
-        for (name in c("progress", "show_pager", "label_top", "label_bottom", "list", "sidebar_note")) {
+        for (name in c("banner_state", "banner_text", "failed_text", "sync_note", "show_pager", "of_top",
+                       "of_bottom", "list", "sidebar_note")) {
             outputOptions(output, name, suspendWhenHidden = FALSE)
         }
 
@@ -434,6 +508,7 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
                 cache_present(FALSE)
                 cache_requested(FALSE)
                 status("idle")
+                missing_count(0L)
                 loaded(0L)
                 total(NA_integer_)
                 page(1L)
