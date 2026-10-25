@@ -13,6 +13,7 @@ source("scripts/spotify_oauth.R", local = TRUE)
 source("scripts/spotify_api.R", local = TRUE)
 source("scripts/display.R", local = TRUE)
 source("scripts/charts.R", local = TRUE)
+source("scripts/dialogs.R", local = TRUE)
 
 # Shared footer component for cross-linking between apps
 create_app_footer <- function(current_app = "") {
@@ -95,7 +96,20 @@ uiFunc <- function(req) {
                             "Time range:",
                             choices = TIME_RANGES,
                             selected = "short_term",
+                            selectize = FALSE,
                             width = "220px"
+                        )
+                    ),
+                    # Recently Played has no time range; the field stays so that the bar
+                    # doesn't change shape from tab to tab
+                    conditionalPanel(
+                        condition = "input.main_navbar == 'recently_played'",
+                        div(
+                            class = "form-group shiny-input-container",
+                            style = "width: 220px;",
+                            tags$label(class = "control-label", `for` = "time_range_recent", "Time range:"),
+                            tags$select(id = "time_range_recent", class = "form-select", disabled = NA,
+                                        tags$option("Recently Played"))
                         )
                     ),
                     sliderInput(
@@ -141,9 +155,9 @@ uiFunc <- function(req) {
                             br(),
                             p("Discover insights about your Spotify listening habits."),
                             br(),
-                            p("Login to see your top artists, tracks, genres, and create playlists."),
+                            p("Log in to see your top artists, tracks, genres, and create playlists."),
                             br(),
-                            actionButton("login_btn", "Login with Spotify",
+                            actionButton("login_btn", "Log in with Spotify",
                                        class = "btn-success btn-lg",
                                        icon = icon("spotify")),
                             br(),

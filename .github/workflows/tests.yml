@@ -45,7 +45,7 @@ jobs:
             sleep 5
           done
           [ "$CODE" = "200" ]
-          curl -s http://127.0.0.1:8080/ | grep -q "Login with Spotify"
+          curl -s http://127.0.0.1:8080/ | grep -q "Log in with Spotify"
           for asset in www/redirect.js www/favicon.png; do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:8080/$asset")
             echo "$asset: HTTP $CODE"

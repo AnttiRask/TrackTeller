@@ -108,15 +108,7 @@ server <- function(input, output, session) {
     # Handle logout button click
     # The button is in the navbar on every tab, so it is easy to hit by accident: ask first
     observeEvent(input$logout_btn, {
-        showModal(modalDialog(
-            title = "Log out?",
-            p("You will need to log in with Spotify again to see your listening data."),
-            footer = tagList(
-                modalButton("Cancel"),
-                actionButton("confirm_logout", "Log out", class = "btn-success")
-            ),
-            easyClose = TRUE
-        ))
+        showModal(logout_dialog())
     })
 
     observeEvent(input$confirm_logout, {
@@ -129,7 +121,7 @@ server <- function(input, output, session) {
     # The login ended (expired or revoked): forget the token, say so on the login view
     end_session <- function() {
         token_info(NULL)
-        set_auth_message("text-warning", "exclamation-triangle", "Session expired. Please login again.")
+        set_auth_message("text-warning", "exclamation-triangle", "Session expired. Please log in again.")
     }
 
     # A valid access token for the current login, renewed when it is about to
@@ -194,7 +186,7 @@ server <- function(input, output, session) {
         validate(need(res$state == "ok", res$message))
     }
 
-    # Top right of the navbar: who is signed in, and the Logout button
+    # Top right of the navbar: who is signed in, and the Log out button
     output$account_ui <- renderUI({
         req(is_authenticated())
         name <- user_display_name_val()
@@ -203,7 +195,7 @@ server <- function(input, output, session) {
             span(class = "account-name",
                  icon("circle-user"),
                  if (nzchar(name)) paste("Signed in as", name) else "Signed in"),
-            actionButton("logout_btn", "Logout", class = "btn-outline-secondary btn-sm")
+            actionButton("logout_btn", "Log out", class = "btn-outline-secondary btn-sm")
         )
     })
 
