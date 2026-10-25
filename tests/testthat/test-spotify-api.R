@@ -83,10 +83,17 @@ test_that("creating a playlist uses the current endpoint and falls back on 403/4
     expect_length(mock$calls, 1)
 })
 
-test_that("playlists are private unless asked otherwise", {
+test_that("playlists are created public, and what is asked for is what is sent", {
+    # Spotify makes them public whatever we ask (see spotify_create_playlist), so public
+    # is the default; the setting is still passed on exactly as given.
     mock <- mock_sequence(list(json_ok(list(id = "pl1"), 201L)))
     local_mocked_responses(mock$mock)
     spotify_create_playlist("tok", "user9", "Mine", "desc")
+    expect_true(mock$calls[[1]]$body$data$public)
+
+    mock <- mock_sequence(list(json_ok(list(id = "pl1"), 201L)))
+    local_mocked_responses(mock$mock)
+    spotify_create_playlist("tok", "user9", "Mine", "desc", public = FALSE)
     expect_false(mock$calls[[1]]$body$data$public)
 })
 

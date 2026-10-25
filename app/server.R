@@ -988,9 +988,12 @@ server <- function(input, output, session) {
             title = "Create Playlist",
             p(class = "text-muted", "Leave the name empty to use a default name."),
             textInput("new_playlist_name", "Playlist name:", placeholder = "e.g. Summer Vibes"),
-            checkboxInput("new_playlist_public",
-                          "Make it public (anyone can find it on your Spotify profile)",
-                          value = FALSE),
+            p(
+                icon("globe"),
+                " The playlist will be public: Spotify doesn't let apps like this one create",
+                " private playlists. You can make it private in Spotify afterwards: open it,",
+                " click the three dots and choose \"Make private\"."
+            ),
             footer = tagList(
                 modalButton("Cancel"),
                 actionButton("confirm_create_playlist", "Create", class = "btn-success")
@@ -1073,14 +1076,13 @@ server <- function(input, output, session) {
             "{if (nzchar(name_in)) name_in else default_name} ({Sys.Date()})"
         )
 
-        # Create the playlist: private unless the box was ticked
-        make_public <- isTRUE(input$new_playlist_public)
+        # Create the playlist (public: see spotify_create_playlist)
         create_res <- api_request(function(token) {
             spotify_create_playlist(
                 token, user_id,
                 name = as.character(playlist_name),
                 description = "Created with TrackTeller \u2014 trackteller.youcanbeapirate.com",
-                public = make_public
+                public = TRUE
             )
         })
 
@@ -1100,9 +1102,9 @@ server <- function(input, output, session) {
             playlist_url <- paste0("https://open.spotify.com/playlist/", playlist_id)
             showModal(modalDialog(
                 title = "Playlist Created!",
-                p(icon("check-circle", style = "color:#1DB954;"),
-                  if (make_public) " Your playlist is ready. It is public."
-                  else " Your playlist is ready. It is private: only you can see it."),
+                p(icon("check-circle", style = "color:#1DB954;"), " Your playlist is ready."),
+                p("It is public. To make it private, open it in Spotify, click the three dots",
+                  " and choose \"Make private\"."),
                 tags$a("Open in Spotify", href = playlist_url, target = "_blank",
                        class = "btn btn-success"),
                 footer  = modalButton("Close"),
