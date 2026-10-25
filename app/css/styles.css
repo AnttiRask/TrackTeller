@@ -108,6 +108,51 @@ p {
     color: #1DB954;
 }
 
+/* My Playlists: progress line, pager */
+.playlist-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    margin-bottom: 12px;
+    background: #1a3a2a;
+    border: 1px solid #1DB954;
+    border-radius: 8px;
+    color: #1DB954;
+}
+
+.playlist-banner-error {
+    background: #3a1a1c;
+    border-color: #C1272D;
+    color: #f26b70;
+}
+
+.playlist-spinner {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #1a3a2a;
+    border-top-color: #1DB954;
+    border-radius: 50%;
+    animation: playlist-spin 1s linear infinite;
+}
+
+@keyframes playlist-spin {
+    to { transform: rotate(360deg); }
+}
+
+.playlist-pager {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 4px 0 12px 0;
+}
+
+.playlist-pager-label {
+    color: #b3b3b3;
+    font-size: 0.9em;
+}
+
 /* The line under a list: "Showing 20 of 50 artists" */
 .list-note {
     color: #b3b3b3 !important;
