@@ -39,6 +39,7 @@ CI runs the same script (`tests.yml`). httr2's mocks skip its retry loop, so the
 - `app/server.R` — all server logic: OAuth login and token renewal, reactive data fetching, playlist creation, stats card image generation (`magick`)
 - `app/scripts/spotify_oauth.R` — custom OAuth 2.0 Authorization Code Flow with httr2 (authorize URL, token exchange, refresh, expiry check with 5-min buffer); never throws, and never passes Spotify's response text on to the user
 - `app/scripts/display.R` — the shared choices (`TIME_RANGES`, `COUNT_*`, `GENRE_CHART_MAX`) and pure helpers: `displayed_count()` and `count_note()` ("Showing 20 of 50 artists") for the lists, `sanitise_prefs()` for what the browser remembered
+- `app/www/tabs.js` — before login only the Top Artists tab works (the others are dimmed with a "Log in to see this" tooltip, `aria-disabled`, and clicks are stopped on `window`, because Bootstrap listens in the capture phase on `document`); the page starts in the signed-out state and `output.is_authenticated` switches it. Logging out or an expired session also does `nav_select("main_navbar", "top_artists")`, so the user never ends up on an empty tab
 - `app/www/preferences.js` — saves the two shared choices in `localStorage` and sends what was saved when the page connects (see "Shared choices" below)
 - `app/scripts/dialogs.R` — `logout_dialog()` (asks before logging out; Cancel green, Log out the brand red)
 - `app/scripts/charts.R` — `genre_chart()` and its sizing (`genre_chart_css_height()`, `genre_chart_min_height()`)
