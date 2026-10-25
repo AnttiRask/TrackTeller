@@ -7,12 +7,54 @@ library(httr2)
 SPOTIFY_AUTH_URL <- "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL <- "https://accounts.spotify.com/api/token"
 
-# Generate the Spotify authorization URL
-spotify_authorize_url <- function(client_id, redirect_uri, scope, state = NULL) {
-    if (is.null(state)) {
-        state <- paste0(sample(c(letters, LETTERS, 0:9), 32, replace = TRUE), collapse = "")
-    }
+# The `state` value of a login. It travels to Spotify and back in the address, so it has to
+# prove two things when it returns: that this app issued it recently, and that the browser
+# that comes back is the one that left (otherwise someone could send a victim a link with
+# their own login code in it). So it is "<nonce>.<issued at>.<signature>", signed with the
+# client secret (nothing is stored on the server), and the nonce is also kept in the
+# browser's sessionStorage (www/redirect.js) and must match it on return.
+OAUTH_STATE_MAX_AGE <- 600     # seconds a login may take
 
+oauth_state_mac <- function(nonce, issued_at, secret) {
+    as.character(openssl::sha256(charToRaw(paste(nonce, issued_at, sep = ".")), key = secret))
+}
+
+oauth_state_new <- function(secret, now = Sys.time()) {
+    nonce <- paste(as.character(openssl::rand_bytes(16)), collapse = "")
+    issued_at <- as.integer(as.numeric(now))
+    list(
+        nonce = nonce,
+        state = paste(nonce, issued_at, oauth_state_mac(nonce, issued_at, secret), sep = ".")
+    )
+}
+
+# list(ok, reason). reason, when not ok: "missing", "malformed", "signature", "expired"
+# or "browser" (the nonce kept in this browser is not the one in the state)
+oauth_state_check <- function(state, browser_nonce, secret, now = Sys.time(),
+                              max_age = OAUTH_STATE_MAX_AGE) {
+    failed <- function(reason) list(ok = FALSE, reason = reason)
+
+    if (!is.character(state) || length(state) != 1 || is.na(state) || !nzchar(state)) return(failed("missing"))
+    parts <- strsplit(state, ".", fixed = TRUE)[[1]]
+    if (length(parts) != 3 ||
+        !grepl("^[0-9a-f]{32}$", parts[1]) || !grepl("^[0-9]{1,12}$", parts[2])) return(failed("malformed"))
+
+    # Compare the signatures as hashes of themselves, so the comparison takes the same time
+    # wherever they differ
+    double_mac <- \(x) as.character(openssl::sha256(charToRaw(x), key = secret))
+    if (!identical(double_mac(parts[3]), double_mac(oauth_state_mac(parts[1], parts[2], secret)))) return(failed("signature"))
+
+    age <- as.numeric(now) - as.numeric(parts[2])
+    if (age > max_age || age < -60) return(failed("expired"))
+
+    if (!is.character(browser_nonce) || length(browser_nonce) != 1 || is.na(browser_nonce) ||
+        !identical(browser_nonce, parts[1])) return(failed("browser"))
+
+    list(ok = TRUE, reason = NULL)
+}
+
+# Generate the Spotify authorization URL for a state made by oauth_state_new()
+spotify_authorize_url <- function(client_id, redirect_uri, scope, state) {
     params <- list(
         client_id = client_id,
         response_type = "code",
@@ -29,10 +71,7 @@ spotify_authorize_url <- function(client_id, redirect_uri, scope, state = NULL) 
         collapse = "&"
     )
 
-    list(
-        url = paste0(SPOTIFY_AUTH_URL, "?", query_string),
-        state = state
-    )
+    paste0(SPOTIFY_AUTH_URL, "?", query_string)
 }
 
 # POST to Spotify's token endpoint. Returns list(state, token, message), never throws:
