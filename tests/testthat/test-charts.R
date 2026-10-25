@@ -11,13 +11,19 @@ genre_rows <- function(n) {
     )
 }
 
-test_that("the chart gets room for every bar", {
-    expect_equal(genre_chart_height(1), 320L)
-    expect_equal(genre_chart_height(5), 320L)
-    expect_equal(genre_chart_height(10), 450L)
-    expect_equal(genre_chart_height(20), 770L)
-    heights <- vapply(1:30, genre_chart_height, integer(1))
+test_that("the chart never gets less height than its bars need", {
+    expect_equal(genre_chart_min_height(1), 300L)
+    expect_equal(genre_chart_min_height(10), 300L)
+    expect_equal(genre_chart_min_height(20), 450L)
+    heights <- vapply(1:30, genre_chart_min_height, integer(1))
     expect_false(is.unsorted(heights))
+})
+
+test_that("the container height is the rest of the screen, or the minimum", {
+    expect_equal(genre_chart_css_height(20), "calc(max(100vh - 235px, 450px))")
+    expect_equal(genre_chart_css_height(5), "calc(max(100vh - 235px, 300px))")
+    # what plotlyOutput() will accept
+    expect_no_error(plotly::plotlyOutput("x", height = genre_chart_css_height(20)))
 })
 
 test_that("the genre chart is an interactive bar chart with one bar per genre", {
@@ -27,7 +33,8 @@ test_that("the genre chart is an interactive bar chart with one bar per genre", 
     expect_length(bars, 1)
     expect_length(bars[[1]]$x, 12)
     expect_match(bars[[1]]$text[1], "Artists: ")
-    expect_equal(w$x$layout$height, genre_chart_height(12))
+    # no height of its own: it takes the one of its container
+    expect_null(w$x$layout$height)
     expect_match(w$x$layout$title$text, "Your Top 12 Genres", fixed = TRUE)
 })
 

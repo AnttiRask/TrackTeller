@@ -1,14 +1,26 @@
 # The genre bar chart. Lives here (not in server.R) so that it can be rendered on its
 # own, in tests and in a throwaway page.
 
-# Pixels the chart needs for `n` bars: each bar and its label need room, or the
-# labels overlap
-genre_chart_height <- function(n) {
-    max(320L, as.integer(32L * n + 130L))
+# The chart fills the height left on the screen, but never gets less than every bar
+# and its label need (smaller than that and the labels overlap). The offset is the
+# page above the chart: navbar, shared bar and the note line.
+GENRE_CHART_ABOVE_PX  <- 235L
+GENRE_CHART_BAR_PX    <- 18L
+GENRE_CHART_MARGIN_PX <- 90L
+
+# Least height, in pixels, that `n` bars can have
+genre_chart_min_height <- function(n) {
+    max(300L, as.integer(GENRE_CHART_BAR_PX * n + GENRE_CHART_MARGIN_PX))
 }
 
-# `data` is the top of summarise_genres(): one row per genre to draw
-genre_chart <- function(data, height = genre_chart_height(nrow(data))) {
+# CSS height for the chart's container: the rest of the screen, or the minimum
+genre_chart_css_height <- function(n) {
+    sprintf("calc(max(100vh - %dpx, %dpx))", GENRE_CHART_ABOVE_PX, genre_chart_min_height(n))
+}
+
+# `data` is the top of summarise_genres(): one row per genre to draw. The plot has no
+# height of its own: it takes that of its container (see genre_chart_css_height()).
+genre_chart <- function(data, base_size = 13) {
     plot <- data |>
         dplyr::mutate(genre_display = factor(genre_display, levels = rev(genre_display))) |>
         ggplot2::ggplot(ggplot2::aes(
@@ -26,7 +38,7 @@ genre_chart <- function(data, height = genre_chart_height(nrow(data))) {
             y = "Number of Artists"
         ) +
         ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.1))) +
-        theme_spotify() +
+        theme_spotify(base_size = base_size) +
         ggplot2::theme(
             panel.grid.major.x = ggplot2::element_line(
                 color = spotify_colors$white,
@@ -36,6 +48,6 @@ genre_chart <- function(data, height = genre_chart_height(nrow(data))) {
             panel.grid.major.y = ggplot2::element_blank()
         )
 
-    plotly::ggplotly(plot, tooltip = "text", height = height) |>
+    plotly::ggplotly(plot, tooltip = "text") |>
         plotly::layout(hoverlabel = list(bgcolor = spotify_colors$black))
 }

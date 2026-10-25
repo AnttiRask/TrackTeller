@@ -106,7 +106,21 @@ server <- function(input, output, session) {
     })
 
     # Handle logout button click
+    # The button is in the navbar on every tab, so it is easy to hit by accident: ask first
     observeEvent(input$logout_btn, {
+        showModal(modalDialog(
+            title = "Log out?",
+            p("You will need to log in with Spotify again to see your listening data."),
+            footer = tagList(
+                modalButton("Cancel"),
+                actionButton("confirm_logout", "Log out", class = "btn-success")
+            ),
+            easyClose = TRUE
+        ))
+    })
+
+    observeEvent(input$confirm_logout, {
+        removeModal()
         token_info(NULL)
         user_display_name_val("")
         set_auth_message("text-info", "info-circle", "You have been logged out.")
@@ -548,13 +562,13 @@ server <- function(input, output, session) {
         if (!is.null(note)) tags$p(class = "list-note", note)
     })
 
-    # The chart sits in a plain container whose height follows the number of bars. Placed
-    # directly in the page's fill layout the plot would be squeezed into whatever height
-    # is left (and 20 bars need room for their labels).
+    # The chart sits in a plain container that fills the rest of the screen but never gets
+    # less than the bars need. Placed directly in the page's fill layout the plot would be
+    # squeezed into whatever height is left.
     output$genre_plot_ui <- renderUI({
         data <- quiet(genre_data())
         n <- if (is.null(data)) 0L else displayed_count(shown_count(), nrow(data), cap = GENRE_CHART_MAX)
-        plotlyOutput("genre_plot", height = paste0(genre_chart_height(n), "px"))
+        plotlyOutput("genre_plot", height = genre_chart_css_height(n))
     })
 
     # Genre distribution plot - green bars, title case
