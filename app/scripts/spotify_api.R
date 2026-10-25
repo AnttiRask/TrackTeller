@@ -256,7 +256,11 @@ to_title_case <- function(x) {
 # 2026, so try the current one first and fall back to the newer one on 403/404.
 # ---------------------------------------------------------------------------
 
-spotify_create_playlist <- function(token, user_id, name, description, public = FALSE, ...) {
+# Playlists are created public. Spotify's API can't make a private one for an app like
+# ours: a playlist created with public = false reads back as public, and changing it
+# afterwards (PUT public = false) returns 200 but changes nothing (probed 2026-10-25, both
+# endpoints). So we ask for what we will get, and the dialogs tell the user.
+spotify_create_playlist <- function(token, user_id, name, description, public = TRUE, ...) {
     body <- list(name = name, description = description, public = public)
     res <- spotify_post(paste0("/users/", user_id, "/playlists"), token, body = body, ...)
     if (res$http_status %in% c(403L, 404L)) {
