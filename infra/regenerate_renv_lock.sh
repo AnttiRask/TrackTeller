@@ -13,7 +13,7 @@ BASE_IMAGE=rocker/r-ver:4.5.2     # keep in sync with the Dockerfile
 RENV_VERSION=1.0.3                # keep in sync with renv/activate.R
 OUT="${1:-renv.lock}"
 NAME=trackteller-lock
-DIRECT='c("bslib","conflicted","dplyr","ggplot2","httr","jsonlite","magick","plotly","purrr","shiny","stringr","tidyr","waiter")'
+DIRECT='c("bslib","conflicted","dplyr","ggplot2","httr2","jsonlite","magick","plotly","purrr","shiny","stringr","tidyr","waiter")'
 
 cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT

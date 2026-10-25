@@ -2,21 +2,12 @@
 library(conflicted)
 library(dplyr)
 library(ggplot2)
-library(httr)
 library(magick)
 library(plotly)
 library(purrr)
 library(stringr)
 library(tidyr)
 library(waiter)
-
-# Helper function to convert to Title Case
-to_title_case <- function(x) {
-    sapply(x, function(s) {
-        words <- strsplit(s, " ")[[1]]
-        paste(toupper(substring(words, 1, 1)), substring(words, 2), sep = "", collapse = " ")
-    }, USE.NAMES = FALSE)
-}
 
 # Define the server function
 server <- function(input, output, session) {
@@ -33,9 +24,6 @@ server <- function(input, output, session) {
     # Reactive value to store token info
     token_info <- reactiveVal(NULL)
 
-    # Reactive trigger for manual data refresh
-    refresh_trigger <- reactiveVal(0)
-
     # Store display name for stats card download
     user_display_name_val <- reactiveVal("")
 
@@ -43,6 +31,25 @@ server <- function(input, output, session) {
     is_authenticated <- reactive({
         !is.null(token_info()) && !is.null(token_info()$access_token)
     })
+
+    # The message under the login button (login failed, session expired, logged out).
+    # Defined once; the observers only change the value. (An output defined inside an
+    # observer is thrown away when that observer re-runs, which is what happens right
+    # after the address is cleared.)
+    auth_message <- reactiveVal(NULL)
+
+    set_auth_message <- function(class, icon_name, text) {
+        auth_message(list(class = class, icon = icon_name, text = text))
+    }
+
+    output$auth_status <- renderUI({
+        msg <- auth_message()
+        req(msg)
+        div(class = msg$class, icon(msg$icon), paste0(" ", msg$text))
+    })
+    # These two sit in panels that start hidden (the login or the logged-in view), and
+    # Shiny doesn't compute outputs it thinks are hidden: always compute them
+    outputOptions(output, "auth_status", suspendWhenHidden = FALSE)
 
     # Output for conditional panel
     output$is_authenticated <- reactive({
@@ -52,44 +59,34 @@ server <- function(input, output, session) {
 
     # Handle OAuth callback on session start
     observe({
-        # Get the OAuth code from hidden input (set by UI)
+        # Get the OAuth code from the address (set by Spotify's redirect)
         query <- parseQueryString(session$clientData$url_search)
 
         if (!is.null(query$code) && is.null(isolate(token_info()))) {
-            tryCatch({
-                # Exchange code for token
-                new_token <- spotify_exchange_code(
-                    code = query$code,
-                    client_id = SPOTIFY_CLIENT_ID,
-                    client_secret = SPOTIFY_CLIENT_SECRET,
-                    redirect_uri = REDIRECT_URI
-                )
-                token_info(new_token)
+            result <- spotify_exchange_code(
+                code = query$code,
+                client_id = SPOTIFY_CLIENT_ID,
+                client_secret = SPOTIFY_CLIENT_SECRET,
+                redirect_uri = REDIRECT_URI
+            )
 
-                # Clear the URL query parameters after successful auth
-                updateQueryString("?", mode = "replace")
+            # The code can only be used once: clear it from the address either way
+            updateQueryString("?", mode = "replace")
 
-                output$auth_status <- renderUI({
-                    div(class = "text-success",
-                        icon("check-circle"),
-                        " Successfully logged in!")
-                })
-            }, error = function(e) {
-                output$auth_status <- renderUI({
-                    div(class = "text-danger",
-                        icon("exclamation-triangle"),
-                        " Authentication failed: ", e$message)
-                })
-            })
+            if (result$state == "ok") {
+                token_info(result$token)
+
+                set_auth_message("text-success", "check-circle", "Successfully logged in!")
+            } else {
+                set_auth_message("text-danger", "exclamation-triangle",
+                                 paste("Authentication failed:", result$message))
+            }
         }
 
         # Handle OAuth error
         if (!is.null(query$error)) {
-            output$auth_status <- renderUI({
-                div(class = "text-danger",
-                    icon("exclamation-triangle"),
-                    " Spotify authorization denied: ", query$error)
-            })
+            set_auth_message("text-danger", "exclamation-triangle",
+                             paste("Spotify authorization denied:", query$error))
         }
     })
 
@@ -111,70 +108,93 @@ server <- function(input, output, session) {
     # Handle logout button click
     observeEvent(input$logout_btn, {
         token_info(NULL)
-        output$auth_status <- renderUI({
-            div(class = "text-info",
-                icon("info-circle"),
-                " You have been logged out.")
-        })
+        set_auth_message("text-info", "info-circle", "You have been logged out.")
     })
 
-    # Helper function to get a valid access token
-    get_access_token <- reactive({
-        current_token <- token_info()
+    # The login ended (expired or revoked): forget the token, say so on the login view
+    end_session <- function() {
+        token_info(NULL)
+        set_auth_message("text-warning", "exclamation-triangle", "Session expired. Please login again.")
+    }
 
-        if (is.null(current_token)) {
-            return(NULL)
-        }
+    # A valid access token for the current login, renewed when it is about to
+    # expire. NULL when nobody is logged in, or when the login could not be renewed.
+    # A plain function, not a reactive: reading the token must not make the data
+    # reactives re-run every time it is renewed.
+    current_token <- function(force_refresh = FALSE) {
+        tok <- isolate(token_info())
+        if (is.null(tok)) return(NULL)
 
-        # Check if token needs refresh
-        if (token_is_expired(current_token)) {
-            tryCatch({
-                refreshed_token <- spotify_refresh_token(
-                    refresh_token = current_token$refresh_token,
-                    client_id = SPOTIFY_CLIENT_ID,
-                    client_secret = SPOTIFY_CLIENT_SECRET
-                )
-                token_info(refreshed_token)
-                return(refreshed_token$access_token)
-            }, error = function(e) {
-                # If refresh fails, clear token and require re-auth
-                token_info(NULL)
-                output$auth_status <- renderUI({
-                    div(class = "text-warning",
-                        icon("exclamation-triangle"),
-                        " Session expired. Please login again.")
-                })
+        if (force_refresh || token_is_expired(tok)) {
+            result <- spotify_refresh_token(
+                refresh_token = tok$refresh_token,
+                client_id = SPOTIFY_CLIENT_ID,
+                client_secret = SPOTIFY_CLIENT_SECRET
+            )
+            if (result$state == "reauth") {
+                end_session()
                 return(NULL)
-            })
+            }
+            if (result$state != "ok") {
+                showNotification(result$message, type = "error", duration = 10)
+                return(NULL)
+            }
+            token_info(result$token)
+            tok <- result$token
         }
 
-        current_token$access_token
+        tok$access_token
+    }
+
+    # Run one Spotify call with the current token. `call` is function(token) that
+    # returns a result from spotify_get() / spotify_post(). If Spotify says the
+    # token is no longer valid, renew it once and try again.
+    api_request <- function(call) {
+        token <- current_token()
+        if (is.null(token)) {
+            state <- if (is.null(isolate(token_info()))) "reauth" else "error"
+            return(list(state = state, data = NULL, http_status = NA_integer_,
+                        message = spotify_messages[[state]]))
+        }
+
+        res <- call(token)
+
+        if (res$state == "reauth") {
+            token <- current_token(force_refresh = TRUE)
+            if (!is.null(token)) res <- call(token)
+            if (res$state == "reauth") end_session()
+        }
+        res
+    }
+
+    api_get <- function(path, query = list()) {
+        api_request(function(token) spotify_get(path, token, query))
+    }
+
+    # Inside a reactive or output: stop with Spotify's message in place of the data
+    # when the call failed (nothing is shown when the login ended; the page then
+    # switches to the login view)
+    stop_if_failed <- function(res) {
+        if (res$state == "reauth") req(FALSE)
+        validate(need(res$state == "ok", res$message))
+    }
+
+    output$user_display_name <- renderText({
+        name <- user_display_name_val()
+        if (nzchar(name)) paste("Welcome,", name, "!") else "Welcome!"
     })
+    outputOptions(output, "user_display_name", suspendWhenHidden = FALSE)
 
     # Get user profile to display
     observe({
         req(is_authenticated())
-        token <- get_access_token()
-        req(token)
+        res <- api_get("/me")
 
-        tryCatch({
-            response <- GET(
-                "https://api.spotify.com/v1/me",
-                add_headers(Authorization = paste("Bearer", token))
-            )
-
-            if (status_code(response) == 200) {
-                user_data <- content(response, "parsed")
-                user_display_name_val(user_data$display_name %||% "")
-                output$user_display_name <- renderText({
-                    paste("Welcome,", user_data$display_name, "!")
-                })
-                # Store user ID for playlist creation
-                session$userData$user_id <- user_data$id
-            }
-        }, error = function(e) {
-            # Silently fail - user display name is optional
-        })
+        if (res$state == "ok") {
+            user_display_name_val(res$data$display_name %||% "")
+            # Store user ID for playlist creation
+            session$userData$user_id <- res$data$id
+        }
     })
 
     # ============================================
@@ -239,50 +259,13 @@ server <- function(input, output, session) {
 
     # Fetch ALL top artists (up to 50) based on time range
     all_top_artists_data <- reactive({
-        refresh_trigger()
         req(is_authenticated())
-        token <- get_access_token()
-        req(token)
 
-        time_range <- get_time_range()
+        res <- api_get("/me/top/artists",
+                       list(limit = 50, time_range = get_time_range()))
+        stop_if_failed(res)
 
-        tryCatch({
-            response <- GET(
-                "https://api.spotify.com/v1/me/top/artists",
-                add_headers(Authorization = paste("Bearer", token)),
-                query = list(limit = 50, time_range = time_range)
-            )
-
-            if (status_code(response) != 200) {
-                stop(paste("Failed to fetch top artists. Status:", status_code(response)))
-            }
-
-            data <- content(response, "parsed")
-
-            if (length(data$items) == 0) {
-                return(NULL)
-            }
-
-            # Extract artist data
-            artists <- map_dfr(seq_along(data$items), function(i) {
-                artist <- data$items[[i]]
-                tibble(
-                    rank = i,
-                    id = artist$id,
-                    name = artist$name,
-                    popularity = artist$popularity,
-                    followers = artist$followers$total,
-                    genres = paste(artist$genres, collapse = ", "),
-                    image_url = if (length(artist$images) > 0) artist$images[[1]]$url else NA_character_,
-                    spotify_url = artist$external_urls$spotify
-                )
-            })
-
-            return(artists)
-        }, error = function(e) {
-            showNotification(paste("Error:", e$message), type = "error", duration = 10)
-            return(NULL)
-        })
+        parse_top_artists(res$data)
     })
 
     # Update slider max when data changes
@@ -351,11 +334,11 @@ server <- function(input, output, session) {
                 # Stats
                 tags$div(
                     style = "text-align: right; color: #b3b3b3; font-size: 0.85em;",
-                    tags$div(
+                    if (!is.na(artist$popularity)) tags$div(
                         style = "color: #1DB954;",
                         paste0("Popularity: ", artist$popularity)
                     ),
-                    tags$div(
+                    if (!is.na(artist$followers)) tags$div(
                         paste0(format(artist$followers, big.mark = ","), " followers")
                     )
                 ),
@@ -390,51 +373,13 @@ server <- function(input, output, session) {
 
     # Fetch ALL top tracks (up to 50) based on time range
     all_top_tracks_data <- reactive({
-        refresh_trigger()
         req(is_authenticated())
-        token <- get_access_token()
-        req(token)
 
-        time_range <- get_time_range_tracks()
+        res <- api_get("/me/top/tracks",
+                       list(limit = 50, time_range = get_time_range_tracks()))
+        stop_if_failed(res)
 
-        tryCatch({
-            response <- GET(
-                "https://api.spotify.com/v1/me/top/tracks",
-                add_headers(Authorization = paste("Bearer", token)),
-                query = list(limit = 50, time_range = time_range)
-            )
-
-            if (status_code(response) != 200) {
-                stop(paste("Failed to fetch top tracks. Status:", status_code(response)))
-            }
-
-            data <- content(response, "parsed")
-
-            if (length(data$items) == 0) {
-                return(NULL)
-            }
-
-            # Extract track data
-            tracks <- map_dfr(seq_along(data$items), function(i) {
-                track <- data$items[[i]]
-                tibble(
-                    rank = i,
-                    id = track$id,
-                    name = track$name,
-                    artist = paste(sapply(track$artists, function(a) a$name), collapse = ", "),
-                    album = track$album$name,
-                    popularity = track$popularity,
-                    duration_ms = track$duration_ms,
-                    album_image_url = if (length(track$album$images) > 0) track$album$images[[1]]$url else NA_character_,
-                    spotify_url = track$external_urls$spotify
-                )
-            })
-
-            return(tracks)
-        }, error = function(e) {
-            showNotification(paste("Error:", e$message), type = "error", duration = 10)
-            return(NULL)
-        })
+        parse_top_tracks(res$data)
     })
 
     # Update slider max when data changes
@@ -476,11 +421,7 @@ server <- function(input, output, session) {
         # Create a list of track cards
         track_cards <- lapply(seq_len(nrow(data)), function(i) {
             track <- data[i, ]
-            # Format duration as M:SS
-            duration_sec <- track$duration_ms / 1000
-            duration_min <- floor(duration_sec / 60)
-            duration_remaining <- round(duration_sec %% 60)
-            duration_formatted <- sprintf("%d:%02d", duration_min, duration_remaining)
+            duration_formatted <- format_duration(track$duration_ms)
 
             tags$div(
                 class = "track-card",
@@ -513,7 +454,7 @@ server <- function(input, output, session) {
                 # Stats
                 tags$div(
                     style = "text-align: right; color: #b3b3b3; font-size: 0.85em;",
-                    tags$div(
+                    if (!is.na(track$popularity)) tags$div(
                         style = "color: #1DB954;",
                         paste0("Popularity: ", track$popularity)
                     ),
@@ -547,46 +488,23 @@ server <- function(input, output, session) {
     # RECENTLY PLAYED TAB
     # ============================================
 
-    recently_played_data <- reactive({
-        refresh_trigger()
+    # Fetched once (the last 50); the slider only slices what is already loaded
+    recently_played_all <- reactive({
         req(is_authenticated())
-        token <- get_access_token()
-        req(token)
+
+        res <- api_get("/me/player/recently-played", list(limit = 50))
+        stop_if_failed(res)
+
+        parse_recent_tracks(res$data, count = 50)
+    })
+
+    recently_played_data <- reactive({
+        tracks <- recently_played_all()
+        if (is.null(tracks)) return(NULL)
 
         count <- input$recent_tracks_display_count
         if (is.null(count)) count <- 20
-
-        tryCatch({
-            response <- GET(
-                "https://api.spotify.com/v1/me/player/recently-played",
-                add_headers(Authorization = paste("Bearer", token)),
-                query = list(limit = 50)
-            )
-
-            if (status_code(response) != 200) return(NULL)
-
-            data <- content(response, "parsed")
-
-            if (length(data$items) == 0) return(NULL)
-
-            tracks <- map_dfr(data$items, function(item) {
-                t <- item$track
-                tibble(
-                    id          = t$id,
-                    name        = t$name,
-                    artist      = paste(sapply(t$artists, function(a) a$name), collapse = ", "),
-                    album       = t$album$name,
-                    spotify_url = t$external_urls$spotify
-                )
-            }) |>
-                distinct(id, .keep_all = TRUE) |>
-                head(count)
-
-            return(tracks)
-        }, error = function(e) {
-            showNotification(paste("Error:", e$message), type = "error", duration = 10)
-            NULL
-        })
+        head(tracks, count)
     })
 
     output$recently_played_list <- renderUI({
@@ -640,64 +558,13 @@ server <- function(input, output, session) {
 
     # Fetch top artists for genre analysis
     genre_data <- reactive({
-        refresh_trigger()
         req(is_authenticated())
-        token <- get_access_token()
-        req(token)
 
-        time_range <- get_time_range_genres()
+        res <- api_get("/me/top/artists",
+                       list(limit = 50, time_range = get_time_range_genres()))
+        stop_if_failed(res)
 
-        tryCatch({
-            response <- GET(
-                "https://api.spotify.com/v1/me/top/artists",
-                add_headers(Authorization = paste("Bearer", token)),
-                query = list(limit = 50, time_range = time_range)
-            )
-
-            if (status_code(response) != 200) {
-                stop(paste("Failed to fetch artists for genres. Status:", status_code(response)))
-            }
-
-            data <- content(response, "parsed")
-
-            if (length(data$items) == 0) {
-                return(NULL)
-            }
-
-            # Build genre-artist pairs to preserve genre-artist mapping
-            genre_artist_pairs <- map_dfr(data$items, function(artist) {
-                genres <- unlist(artist$genres)
-                if (length(genres) == 0) return(NULL)
-                tibble(genre = genres, artist_name = artist$name)
-            })
-
-            if (nrow(genre_artist_pairs) == 0) {
-                return(NULL)
-            }
-
-            genre_counts <- genre_artist_pairs |>
-                group_by(genre) |>
-                summarise(
-                    count = n(),
-                    all_artists = list(artist_name),
-                    .groups = "drop"
-                ) |>
-                arrange(desc(count)) |>
-                mutate(
-                    percentage = round(count / sum(count) * 100, 1),
-                    genre_display = to_title_case(genre),
-                    # Show up to 5 artist names, then "..."
-                    artist_names = map_chr(all_artists, function(names) {
-                        if (length(names) <= 5) paste(names, collapse = ", ")
-                        else paste0(paste(names[1:5], collapse = ", "), "...")
-                    })
-                )
-
-            return(genre_counts)
-        }, error = function(e) {
-            showNotification(paste("Error:", e$message), type = "error", duration = 10)
-            return(NULL)
-        })
+        summarise_genres(res$data)
     })
 
     # Genre distribution plot - green bars, title case
@@ -771,62 +638,41 @@ server <- function(input, output, session) {
         req(playlists_loading())
         req(!playlists_done())
         req(is_authenticated())
-        token <- get_access_token()
-        req(token)
 
         offset <- playlists_offset()
         batch_size <- 50
 
-        tryCatch({
-            response <- GET(
-                "https://api.spotify.com/v1/me/playlists",
-                add_headers(Authorization = paste("Bearer", token)),
-                query = list(limit = batch_size, offset = offset)
-            )
+        res <- api_get("/me/playlists", list(limit = batch_size, offset = offset))
 
-            if (status_code(response) != 200) {
-                stop(paste("Failed to fetch playlists. Status:", status_code(response)))
+        if (res$state != "ok") {
+            if (res$state != "reauth") {
+                showNotification(res$message, type = "error", duration = 10)
             }
-
-            data <- content(response, "parsed")
-            items <- data$items
-
-            if (length(items) > 0) {
-                # Extract this batch (NULL-safe)
-                batch <- map_dfr(seq_along(items), function(i) {
-                    playlist <- items[[i]]
-                    tibble(
-                        id = playlist$id %||% NA_character_,
-                        name = playlist$name %||% "(Untitled)",
-                        description = playlist$description %||% "",
-                        track_count = playlist$tracks$total %||% 0L,
-                        owner = playlist$owner$display_name %||% "Unknown",
-                        is_public = playlist$public %||% TRUE,
-                        image_url = if (length(playlist$images) > 0) playlist$images[[1]]$url else NA_character_,
-                        spotify_url = playlist$external_urls$spotify %||% NA_character_
-                    )
-                })
-
-                # Append to existing data and sort
-                current <- all_playlists_data()
-                updated <- if (is.null(current)) batch else bind_rows(current, batch)
-                updated <- updated %>% arrange(tolower(name))
-                all_playlists_data(updated)
-            }
-
-            if (length(items) < batch_size) {
-                # All done
-                playlists_done(TRUE)
-                playlists_loading(FALSE)
-            } else {
-                # More to fetch - schedule next batch
-                playlists_offset(offset + batch_size)
-                invalidateLater(100)
-            }
-        }, error = function(e) {
-            showNotification(paste("Error loading playlists:", e$message), type = "error", duration = 10)
             playlists_loading(FALSE)
-        })
+            return()
+        }
+
+        items <- res$data$items
+
+        if (length(items) > 0) {
+            batch <- parse_playlists_page(items)
+
+            # Append to existing data and sort
+            current <- all_playlists_data()
+            updated <- if (is.null(current)) batch else bind_rows(current, batch)
+            updated <- updated %>% arrange(tolower(name))
+            all_playlists_data(updated)
+        }
+
+        if (length(items) < batch_size) {
+            # All done
+            playlists_done(TRUE)
+            playlists_loading(FALSE)
+        } else {
+            # More to fetch - schedule next batch
+            playlists_offset(offset + batch_size)
+            invalidateLater(100)
+        }
     })
 
     # Update letter filter choices based on available playlists
@@ -1205,8 +1051,6 @@ server <- function(input, output, session) {
     observeEvent(input$confirm_create_playlist, {
         removeModal()
         req(is_authenticated())
-        token <- get_access_token()
-        req(token)
 
         source <- create_playlist_source()
         req(source)
@@ -1214,7 +1058,10 @@ server <- function(input, output, session) {
         user_id <- session$userData$user_id
         req(user_id)
 
-        # Get tracks based on source
+        # Get tracks based on source; a failed Spotify call is kept to explain why
+        # there is nothing to add
+        failure <- NULL
+
         tracks <- if (source == "top_tracks") {
             top_tracks_data()
         } else if (source == "recently_played") {
@@ -1225,29 +1072,28 @@ server <- function(input, output, session) {
             req(artists)
             all_tracks <- list()
             for (i in seq_len(nrow(artists))) {
-                resp <- GET(
-                    paste0("https://api.spotify.com/v1/artists/", artists$id[i], "/top-tracks"),
-                    add_headers(Authorization = paste("Bearer", token)),
-                    query = list(market = "US")
-                )
-                if (status_code(resp) == 200) {
-                    td <- content(resp, "parsed")
-                    if (length(td$tracks) > 0) {
-                        t <- td$tracks[[1]]
-                        all_tracks[[length(all_tracks) + 1]] <- tibble(
-                            id     = t$id,
-                            name   = t$name,
-                            artist = paste(sapply(t$artists, function(a) a$name), collapse = ", ")
-                        )
-                    }
+                res <- api_get(paste0("/artists/", artists$id[i], "/top-tracks"),
+                               list(market = "US"))
+                if (res$state == "ok") {
+                    track <- parse_first_track(res$data)
+                    if (!is.null(track)) all_tracks[[length(all_tracks) + 1]] <- track
+                } else {
+                    failure <- res
+                    # No point asking again when Spotify refuses the endpoint or the login ended
+                    if (res$state %in% c("forbidden", "reauth")) break
                 }
             }
             if (length(all_tracks) > 0) bind_rows(all_tracks) |> distinct(id, .keep_all = TRUE)
             else NULL
         }
 
-        if (is.null(tracks) || nrow(tracks) == 0) {
-            showNotification("No tracks available to create a playlist.", type = "error")
+        track_ids <- if (is.null(tracks)) character(0) else tracks$id[!is.na(tracks$id)]
+
+        if (length(track_ids) == 0) {
+            showNotification(
+                if (!is.null(failure)) failure$message else "No tracks available to create a playlist.",
+                type = "error"
+            )
             return()
         }
 
@@ -1261,42 +1107,30 @@ server <- function(input, output, session) {
             "{if (nzchar(name_in)) name_in else default_name} ({Sys.Date()})"
         )
 
-        # Create the playlist
-        create_resp <- POST(
-            paste0("https://api.spotify.com/v1/users/", user_id, "/playlists"),
-            add_headers(Authorization = paste("Bearer", token)),
-            content_type_json(),
-            body = jsonlite::toJSON(
-                list(
-                    name        = as.character(playlist_name),
-                    description = "Created with TrackTeller \u2014 trackteller.youcanbeapirate.com",
-                    public      = TRUE
-                ),
-                auto_unbox = TRUE
-            ),
-            encode = "raw"
-        )
+        # Create the playlist (public, as before; the private default comes with
+        # the playlist options)
+        create_res <- api_request(function(token) {
+            spotify_create_playlist(
+                token, user_id,
+                name = as.character(playlist_name),
+                description = "Created with TrackTeller \u2014 trackteller.youcanbeapirate.com",
+                public = TRUE
+            )
+        })
 
-        if (status_code(create_resp) != 201) {
-            showNotification("Failed to create playlist. Please try again.", type = "error")
+        playlist_id <- create_res$data$id
+        if (create_res$state != "ok" || is.null(playlist_id)) {
+            showNotification(
+                if (create_res$state == "ok") "Failed to create playlist. Please try again." else create_res$message,
+                type = "error"
+            )
             return()
         }
 
-        playlist_data <- content(create_resp, "parsed")
-        playlist_id   <- playlist_data$id
-
         # Add tracks
-        add_resp <- POST(
-            paste0("https://api.spotify.com/v1/playlists/", playlist_id, "/tracks"),
-            add_headers(
-                Authorization  = paste("Bearer", token),
-                "Content-Type" = "application/json"
-            ),
-            body   = list(uris = paste0("spotify:track:", tracks$id)),
-            encode = "json"
-        )
+        add_res <- api_request(function(token) spotify_add_tracks(token, playlist_id, track_ids))
 
-        if (status_code(add_resp) %in% c(200, 201)) {
+        if (add_res$state == "ok") {
             playlist_url <- paste0("https://open.spotify.com/playlist/", playlist_id)
             showModal(modalDialog(
                 title = "Playlist Created!",

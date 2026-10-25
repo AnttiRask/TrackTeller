@@ -10,6 +10,7 @@ library(waiter)
 source("scripts/global.R", local = TRUE)
 source("scripts/config.R", local = TRUE)
 source("scripts/spotify_oauth.R", local = TRUE)
+source("scripts/spotify_api.R", local = TRUE)
 
 # Shared footer component for cross-linking between apps
 create_app_footer <- function(current_app = "") {

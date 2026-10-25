@@ -22,21 +22,30 @@ sudo docker compose up --build
 # version differs from renv.lock (4.5.2) may not work
 ```
 
-There are no tests or linting configured.
+Tests (testthat, no live Spotify calls) run inside the production image, so they see the R and package versions that run in production:
+
+```bash
+docker build -t trackteller-ci .
+tests/run_in_docker.sh trackteller-ci
+```
+
+CI runs the same script (`tests.yml`). httr2's mocks skip its retry loop, so the retry tests talk to a real local server (`start_flaky_server()` in `tests/testthat/helper-setup.R`). The server code (`app/server.R`) is not covered by tests yet; check it by hand with a real login. There is no linting.
 
 ## Architecture
 
 ### Entry Point & File Roles
 - `app/run.R` — changes into `app/`, then boots the Shiny app (sources ui.R and server.R, binds to `0.0.0.0:PORT`)
 - `app/ui.R` — function-based UI (`uiFunc(req)`) that parses OAuth callback query params and builds a `bslib::page_navbar` with 5 tabs: Top Artists, Top Tracks, Recently Played, Top Genres, My Playlists
-- `app/server.R` — all server logic: OAuth token exchange, Spotify API calls (`httr::GET/POST`), reactive data fetching, playlist creation, stats card image generation (`magick`)
-- `app/scripts/spotify_oauth.R` — custom OAuth 2.0 Authorization Code Flow (authorize URL, token exchange, refresh, expiry check with 5-min buffer)
+- `app/server.R` — all server logic: OAuth login and token renewal, reactive data fetching, playlist creation, stats card image generation (`magick`)
+- `app/scripts/spotify_oauth.R` — custom OAuth 2.0 Authorization Code Flow with httr2 (authorize URL, token exchange, refresh, expiry check with 5-min buffer); never throws, and never passes Spotify's response text on to the user
+- `app/scripts/spotify_api.R` — the Spotify API layer: `spotify_get()` / `spotify_post()` return `list(state, data, http_status, message)` (`ok`, `reauth`, `forbidden`, `rate_limited`, `error`) with timeouts and retries; parsers turn the JSON into tibbles and tolerate fields Spotify has removed (`popularity`, `followers`); playlist writes try the current endpoint and fall back to the newer one on 403/404
 - `app/scripts/config.R` — reads env vars (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `APP_URL`), validates config
 - `app/scripts/global.R` — Spotify brand colors and `theme_spotify()` ggplot theme
 
 ### Key Patterns
-- **OAuth flow**: UI passes `code`/`state` via hidden inputs → server exchanges for token → session-scoped `reactiveVal(token_info)` with auto-refresh
-- **Spotify API helper**: `spotify_api_call()` in server.R wraps all API requests with token refresh, pagination, and error handling
+- **OAuth flow**: Spotify redirects back with `code`/`state` in the address → the server exchanges the code for a token (and clears the address) → session-scoped `reactiveVal(token_info)` with auto-refresh. The `state` value is not checked yet
+- **Spotify API calls from the server**: `api_get()` / `api_request()` in server.R run a call with the current token and renew it once on a 401; `stop_if_failed()` turns a failed call into a plain message in the output. `current_token()` is a plain function, not a reactive, so renewing the token doesn't re-run the data reactives
+- **Outputs are defined once**, at the top of `server()`, and observers only change reactive values (`auth_message`, `user_display_name_val`). An output assigned inside an observer is thrown away when the observer re-runs, and an output in a panel that starts hidden needs `outputOptions(..., suspendWhenHidden = FALSE)`
 - **Conditional UI**: `conditionalPanel` toggled by `output.is_authenticated` — pre-login shows welcome, post-login shows data
 - **Stats cards**: `magick`-based image composition for shareable 1200×630 PNG cards with Spotify artist/track images
 - **Cross-app footer**: `create_app_footer()` links to sibling apps on youcanbeapirate.com
