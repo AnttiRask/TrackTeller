@@ -108,6 +108,75 @@ p {
     color: #1DB954;
 }
 
+/* My Playlists: progress line, pager */
+.playlist-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    margin-bottom: 12px;
+    background: #1a3a2a;
+    border: 1px solid #1DB954;
+    border-radius: 8px;
+    color: #1DB954;
+}
+
+.playlist-banner-error {
+    background: #3a1a1c;
+    border-color: #C1272D;
+    color: #f26b70;
+}
+
+.playlist-spinner {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #1a3a2a;
+    border-top-color: #1DB954;
+    border-radius: 50%;
+    animation: playlist-spin 1s linear infinite;
+}
+
+@keyframes playlist-spin {
+    to { transform: rotate(360deg); }
+}
+
+.playlist-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 12px 0;
+}
+
+.playlist-pager-goto {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 6px;
+    color: #b3b3b3;
+    font-size: 0.9em;
+}
+
+.playlist-pager-goto .form-group,
+.playlist-pager-goto .shiny-input-container {
+    margin: 0 !important;
+    width: auto !important;
+}
+
+.playlist-pager-goto input.form-control {
+    width: 72px;
+    height: 30px;
+    padding: 2px 6px;
+    text-align: center;
+}
+
+.playlist-warning {
+    color: #FFD700;
+    font-size: 0.9em;
+    margin: 0 0 10px 0;
+}
+
 /* The line under a list: "Showing 20 of 50 artists" */
 .list-note {
     color: #b3b3b3 !important;
@@ -289,4 +358,18 @@ a:focus, button:focus, input:focus, select:focus {
 
 .skip-link:focus {
     top: 0;
+}
+/* Shiny marks an output "recalculating" while it updates: it fades it to 30% and, from the
+   busy-indicator CSS, adds its own ring spinner and a minimum height. My Playlists updates its
+   banner text and list with every batch that arrives, which showed as flashing and as a second
+   (white) spinner behind our own: keep it steady. */
+.playlist-area .recalculating,
+.playlist-area .recalculating > * {
+    opacity: 1 !important;
+    transition: none !important;
+    min-height: 0 !important;
+}
+.playlist-area .recalculating::after,
+.playlist-area .recalculating::before {
+    display: none !important;
 }

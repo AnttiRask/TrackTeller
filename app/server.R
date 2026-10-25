@@ -26,6 +26,7 @@ server <- function(input, output, session) {
 
     # Store display name for stats card download
     user_display_name_val <- reactiveVal("")
+    user_id_val <- reactiveVal(NULL)
 
     # Reactive value for authentication state
     is_authenticated <- reactive({
@@ -116,6 +117,7 @@ server <- function(input, output, session) {
         token_info(NULL)
         nav_select("main_navbar", "top_artists")
         user_display_name_val("")
+        user_id_val(NULL)
         set_auth_message("text-info", "info-circle", "You have been logged out.")
     })
 
@@ -124,6 +126,7 @@ server <- function(input, output, session) {
         token_info(NULL)
         nav_select("main_navbar", "top_artists")
         user_display_name_val("")
+        user_id_val(NULL)
         set_auth_message("text-warning", "exclamation-triangle", "Session expired. Please log in again.")
     }
 
@@ -181,6 +184,30 @@ server <- function(input, output, session) {
         api_request(function(token) spotify_get(path, token, query))
     }
 
+    # The same, but a promise, and the R session isn't blocked while Spotify answers (for
+    # jobs of many requests in a row: see playlists_module.R). If the token is rejected,
+    # it is renewed once and the call repeated, as in api_request().
+    api_get_async <- function(path, query = list()) {
+        token <- current_token()
+        if (is.null(token)) {
+            state <- if (is.null(isolate(token_info()))) "reauth" else "error"
+            return(promises::promise_resolve(list(state = state, data = NULL, http_status = NA_integer_,
+                                                  message = spotify_messages[[state]])))
+        }
+
+        promises::then(spotify_get_async(path, token, query), onFulfilled = function(res) {
+            if (res$state != "reauth") return(res)
+
+            token <- current_token(force_refresh = TRUE)
+            if (is.null(token)) return(res)
+
+            promises::then(spotify_get_async(path, token, query), onFulfilled = function(again) {
+                if (again$state == "reauth") end_session()
+                again
+            })
+        })
+    }
+
     # Inside a reactive or output: stop with Spotify's message in place of the data
     # when the call failed (nothing is shown when the login ended; the page then
     # switches to the login view)
@@ -211,6 +238,7 @@ server <- function(input, output, session) {
             user_display_name_val(res$data$display_name %||% "")
             # Store user ID for playlist creation
             session$userData$user_id <- res$data$id
+            user_id_val(res$data$id)
         }
     })
 
@@ -579,229 +607,16 @@ server <- function(input, output, session) {
     })
 
     # ============================================
-    # MY PLAYLISTS TAB
+    # MY PLAYLISTS TAB (see scripts/playlists_module.R)
     # ============================================
 
-    # Incremental playlist loading state
-    all_playlists_data <- reactiveVal(NULL)
-    playlists_loading <- reactiveVal(FALSE)
-    playlists_offset <- reactiveVal(0)
-    playlists_done <- reactiveVal(FALSE)
-
-    # Start loading when My Playlists tab is opened
-    observeEvent(input$main_navbar, {
-        if (input$main_navbar == "my_playlists" &&
-            is.null(all_playlists_data()) &&
-            !playlists_loading()) {
-            playlists_loading(TRUE)
-            playlists_offset(0)
-            playlists_done(FALSE)
-        }
-    })
-
-    # Load one batch at a time, yielding between batches for UI updates
-    observe({
-        req(playlists_loading())
-        req(!playlists_done())
-        req(is_authenticated())
-
-        offset <- playlists_offset()
-        batch_size <- 50
-
-        res <- api_get("/me/playlists", list(limit = batch_size, offset = offset))
-
-        if (res$state != "ok") {
-            if (res$state != "reauth") {
-                showNotification(res$message, type = "error", duration = 10)
-            }
-            playlists_loading(FALSE)
-            return()
-        }
-
-        items <- res$data$items
-
-        if (length(items) > 0) {
-            batch <- parse_playlists_page(items)
-
-            # Append to existing data and sort
-            current <- all_playlists_data()
-            updated <- if (is.null(current)) batch else bind_rows(current, batch)
-            updated <- updated %>% arrange(tolower(name))
-            all_playlists_data(updated)
-        }
-
-        if (length(items) < batch_size) {
-            # All done
-            playlists_done(TRUE)
-            playlists_loading(FALSE)
-        } else {
-            # More to fetch - schedule next batch
-            playlists_offset(offset + batch_size)
-            invalidateLater(100)
-        }
-    })
-
-    # Update letter filter choices based on available playlists
-    observe({
-        data <- all_playlists_data()
-        req(data)
-
-        # Get first character of each playlist name
-        first_chars <- toupper(substr(data$name, 1, 1))
-
-        # Build available choices: "#" for non-alpha, then A-Z
-        available <- character(0)
-
-        has_non_alpha <- any(!grepl("^[A-Za-z]", first_chars))
-        if (has_non_alpha) available <- c(available, "#" = "#")
-
-        for (letter in LETTERS) {
-            if (any(first_chars == letter)) {
-                available <- c(available, setNames(letter, letter))
-            }
-        }
-
-        # Keep current selection if still valid, otherwise first available
-        current <- input$playlist_letter
-        selected <- if (!is.null(current) && current %in% available) current else available[[1]]
-
-        updateSelectInput(session, "playlist_letter",
-            choices = available,
-            selected = selected
-        )
-    })
-
-    # Filter playlists by selected letter
-    filtered_playlists_data <- reactive({
-        data <- all_playlists_data()
-        req(data)
-
-        letter <- input$playlist_letter
-        if (is.null(letter) || length(letter) == 0 || letter == "") return(head(data, 0))
-
-        if (letter == "#") {
-            data %>% filter(!grepl("^[A-Za-z]", name))
-        } else {
-            data %>% filter(toupper(substr(name, 1, 1)) == letter)
-        }
-    })
-
-    # Render user's playlists
-    output$user_playlists_list <- renderUI({
-        loading <- playlists_loading()
-        all_data <- all_playlists_data()
-
-        # Show spinner if loading hasn't produced any data yet
-        if (loading && is.null(all_data)) {
-            return(tags$div(
-                style = "text-align: center; padding: 40px; color: #b3b3b3;",
-                tags$div(
-                    style = "display: inline-block; width: 30px; height: 30px; border: 3px solid #333; border-top-color: #1DB954; border-radius: 50%; animation: spin 1s linear infinite;",
-                ),
-                tags$style("@keyframes spin { to { transform: rotate(360deg); } }"),
-                tags$p(style = "margin-top: 15px;", "Loading playlists...")
-            ))
-        }
-
-        req(all_data)
-        data <- filtered_playlists_data()
-
-        validate(need(nrow(data) > 0, "No playlists found for this letter."))
-
-        total_count <- nrow(all_data)
-        filtered_count <- nrow(data)
-        still_loading <- loading
-
-        # Create a list of playlist cards
-        playlist_cards <- lapply(seq_len(nrow(data)), function(i) {
-            playlist <- data[i, ]
-            tags$div(
-                class = "playlist-card",
-                style = paste0(
-                    "display: flex; align-items: center; padding: 12px; ",
-                    "margin-bottom: 8px; background: #282828; border-radius: 8px; ",
-                    "transition: background 0.2s; cursor: default;"
-                ),
-                # Playlist image (if available)
-                if (!is.na(playlist$image_url)) {
-                    tags$img(
-                        src = playlist$image_url,
-                        style = "width: 50px; height: 50px; border-radius: 4px; object-fit: cover;"
-                    )
-                } else {
-                    tags$div(
-                        style = "width: 50px; height: 50px; border-radius: 4px; background: #333; display: flex; align-items: center; justify-content: center;",
-                        icon("music", style = "color: #666;")
-                    )
-                },
-                # Playlist info
-                tags$div(
-                    style = "flex: 1; margin-left: 15px;",
-                    tags$div(
-                        style = "color: #fff; font-size: 1.1em; font-weight: 500;",
-                        playlist$name
-                    ),
-                    tags$div(
-                        style = "color: #b3b3b3; font-size: 0.9em; margin-top: 4px;",
-                        paste0("By ", playlist$owner)
-                    )
-                ),
-                # Stats
-                tags$div(
-                    style = "text-align: right; color: #b3b3b3; font-size: 0.85em;",
-                    tags$div(
-                        style = "color: #1DB954;",
-                        paste0(playlist$track_count, " tracks")
-                    ),
-                    tags$div(
-                        if (playlist$is_public) "Public" else "Private"
-                    )
-                ),
-                # Spotify link button
-                tags$a(
-                    href = playlist$spotify_url,
-                    target = "_blank",
-                    style = paste0(
-                        "margin-left: 15px; padding: 8px 12px; ",
-                        "background: #1DB954; color: #fff; border-radius: 20px; ",
-                        "text-decoration: none; font-size: 0.85em; font-weight: 500; ",
-                        "display: flex; align-items: center; gap: 5px;"
-                    ),
-                    icon("spotify"),
-                    "Open"
-                )
-            )
-        })
-
-        loading_banner <- if (still_loading) {
-            tags$div(
-                style = paste0(
-                    "display: flex; align-items: center; gap: 10px; padding: 10px 15px; ",
-                    "margin-bottom: 12px; background: #1a3a2a; border: 1px solid #1DB954; ",
-                    "border-radius: 8px; color: #1DB954;"
-                ),
-                tags$div(
-                    style = "width: 16px; height: 16px; border: 2px solid #1a3a2a; border-top-color: #1DB954; border-radius: 50%; animation: spin 1s linear infinite; flex-shrink: 0;",
-                ),
-                tags$style("@keyframes spin { to { transform: rotate(360deg); } }"),
-                tags$span(paste0("Loading playlists... ", total_count, " found so far. You can already browse below."))
-            )
-        }
-
-        status_text <- paste0("Showing ", filtered_count, " of ", total_count, " playlists")
-
-        tags$div(
-            loading_banner,
-            tags$p(
-                style = "color: #b3b3b3; margin-bottom: 10px;",
-                status_text
-            ),
-            tags$div(
-                style = "padding-right: 10px;",
-                playlist_cards
-            )
-        )
-    })
+    playlists_server(
+        "playlists",
+        api_get = api_get_async,
+        is_authenticated = is_authenticated,
+        tab_active = reactive(identical(input$main_navbar, "my_playlists")),
+        user_id = user_id_val
+    )
 
     # ============================================
     # SHAREABLE STATS CARDS

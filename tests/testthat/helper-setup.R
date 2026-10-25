@@ -36,12 +36,12 @@ requested_paths <- function(env) {
 # (without counting itself); anything else counts and answers with the next code.
 # `headers` (a named list) is added to every counted answer.
 # Returns list(url, proc, count()); stop it with proc$kill().
-start_flaky_server <- function(codes, headers = list()) {
+start_flaky_server <- function(codes, headers = list(), delay = 0) {
     skip_if_not_installed("callr")
     skip_if_not_installed("httpuv")
 
     port <- httpuv::randomPort()
-    proc <- callr::r_bg(function(port, codes, headers) {
+    proc <- callr::r_bg(function(port, codes, headers, delay) {
         n <- 0L
         app <- list(call = function(req) {
             if (req$PATH_INFO == "/count") {
@@ -49,12 +49,13 @@ start_flaky_server <- function(codes, headers = list()) {
                             body = sprintf('{"count": %d}', n)))
             }
             n <<- n + 1L
+            if (delay > 0) Sys.sleep(delay)
             list(status = codes[min(n, length(codes))],
                  headers = c(list("Content-Type" = "application/json"), headers),
                  body = sprintf('{"attempt": %d}', n))
         })
         httpuv::runServer("127.0.0.1", port, app)
-    }, args = list(port = port, codes = as.integer(codes), headers = headers), supervise = TRUE)
+    }, args = list(port = port, codes = as.integer(codes), headers = headers, delay = delay), supervise = TRUE)
 
     url <- paste0("http://127.0.0.1:", port)
     for (i in 1:50) {

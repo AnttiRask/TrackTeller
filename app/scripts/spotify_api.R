@@ -87,6 +87,11 @@ spotify_call <- function(path, token, method = "GET", query = list(), body = NUL
     httr2_http = function(e) e$resp,
     error = function(e) e)
 
+    spotify_logged_result(resp, method, path)
+}
+
+# The result list for a response (or an error), with a line in the log when it isn't ok
+spotify_logged_result <- function(resp, method, path) {
     result <- spotify_result(resp)
 
     if (result$state != "ok") {
@@ -98,8 +103,66 @@ spotify_call <- function(path, token, method = "GET", query = list(), body = NUL
     result
 }
 
+# The same call, without blocking the R session: returns a promise of the result list. For
+# long jobs (a few hundred requests in a row): a blocked session can't answer the browser
+# (clicks, redraws) until the request is done. Always resolves, never rejects.
+#
+# httr2's req_perform_promise() doesn't retry (checked with httr2 1.3.0: a 503 is given up
+# at once), so the retries are done here, with the same rules as spotify_call(): up to
+# max_tries, only for 429/5xx and network failures, Retry-After honoured but capped.
+spotify_call_async <- function(path, token, method = "GET", query = list(), body = NULL,
+                               base_url = SPOTIFY_API_URL, timeout = 10, max_tries = 3,
+                               backoff = NULL) {
+    req <- tryCatch({
+        req <- request(paste0(base_url, path)) |>
+            req_method(method) |>
+            req_auth_bearer_token(token) |>
+            req_user_agent(SPOTIFY_USER_AGENT) |>
+            req_timeout(timeout)
+        if (length(query) > 0) req <- req_url_query(req, !!!query)
+        if (!is.null(body)) req <- req_body_json(req, body, auto_unbox = TRUE)
+        req
+    }, error = function(e) e)
+
+    if (inherits(req, "error")) {
+        return(promises::promise_resolve(spotify_logged_result(req, method, path)))
+    }
+
+    wait_before_retry <- function(resp, attempt) {
+        after <- if (is.null(resp)) NA_real_ else spotify_retry_after(resp)
+        if (!is.na(after)) return(after)
+        if (is.null(backoff)) min(2^attempt, 10) else backoff(attempt)
+    }
+
+    attempt <- function(n) {
+        promises::then(
+            req_perform_promise(req),
+            onFulfilled = function(resp) spotify_logged_result(resp, method, path),
+            onRejected = function(e) {
+                resp <- if (inherits(e, "httr2_http")) e$resp else NULL
+                transient <- is.null(resp) || resp_status(resp) %in% c(429L, 500L, 502L, 503L, 504L)
+
+                if (transient && n < max_tries) {
+                    delay <- wait_before_retry(resp, n)
+                    pause <- promises::promise(function(resolve, reject) {
+                        later::later(function() resolve(NULL), delay)
+                    })
+                    return(promises::then(pause, onFulfilled = function(ignored) attempt(n + 1L)))
+                }
+                spotify_logged_result(if (is.null(resp)) e else resp, method, path)
+            }
+        )
+    }
+
+    attempt(1L)
+}
+
 spotify_get <- function(path, token, query = list(), ...) {
     spotify_call(path, token, method = "GET", query = query, ...)
+}
+
+spotify_get_async <- function(path, token, query = list(), ...) {
+    spotify_call_async(path, token, method = "GET", query = query, ...)
 }
 
 spotify_post <- function(path, token, body = NULL, ...) {
@@ -122,43 +185,49 @@ artist_names <- function(artists) {
     paste(vapply(artists, function(a) a$name %||% "", character(1)), collapse = ", ")
 }
 
+# One column of a result: `get(item)` for each item, or `default` where it is missing.
+# The parsers build a whole page with ONE tibble() call from such columns: a tibble()
+# per row looked cheap in a script (30 ms for 50 rows) but took 230 ms per page inside
+# Shiny's deep call stacks (most of it in tibble()'s name handling), which blocked the
+# session for seconds when 85 pages of playlists were parsed one after another.
+column <- function(items, get, default, type) {
+    vapply(items, function(item) {
+        value <- get(item)
+        if (is.null(value) || length(value) != 1) default else value
+    }, type, USE.NAMES = FALSE)
+}
+
 parse_top_artists <- function(data) {
     items <- data$items
     if (length(items) == 0) return(NULL)
 
-    dplyr::bind_rows(lapply(seq_along(items), function(i) {
-        artist <- items[[i]]
-        tibble::tibble(
-            rank        = i,
-            id          = artist$id %||% NA_character_,
-            name        = artist$name %||% "(Unknown)",
-            popularity  = as.integer(artist$popularity %||% NA_integer_),
-            followers   = as.numeric(artist$followers$total %||% NA_real_),
-            genres      = paste(unlist(artist$genres), collapse = ", "),
-            image_url   = first_image_url(artist$images),
-            spotify_url = artist$external_urls$spotify %||% NA_character_
-        )
-    }))
+    tibble::tibble(
+        rank        = seq_along(items),
+        id          = column(items, \(a) a$id, NA_character_, character(1)),
+        name        = column(items, \(a) a$name, "(Unknown)", character(1)),
+        popularity  = column(items, \(a) as.integer(a$popularity), NA_integer_, integer(1)),
+        followers   = column(items, \(a) as.numeric(a$followers$total), NA_real_, numeric(1)),
+        genres      = vapply(items, \(a) paste(unlist(a$genres), collapse = ", "), character(1), USE.NAMES = FALSE),
+        image_url   = vapply(items, \(a) first_image_url(a$images), character(1), USE.NAMES = FALSE),
+        spotify_url = column(items, \(a) a$external_urls$spotify, NA_character_, character(1))
+    )
 }
 
 parse_top_tracks <- function(data) {
     items <- data$items
     if (length(items) == 0) return(NULL)
 
-    dplyr::bind_rows(lapply(seq_along(items), function(i) {
-        track <- items[[i]]
-        tibble::tibble(
-            rank            = i,
-            id              = track$id %||% NA_character_,
-            name            = track$name %||% "(Unknown)",
-            artist          = artist_names(track$artists),
-            album           = track$album$name %||% "",
-            popularity      = as.integer(track$popularity %||% NA_integer_),
-            duration_ms     = as.numeric(track$duration_ms %||% NA_real_),
-            album_image_url = first_image_url(track$album$images),
-            spotify_url     = track$external_urls$spotify %||% NA_character_
-        )
-    }))
+    tibble::tibble(
+        rank            = seq_along(items),
+        id              = column(items, \(t) t$id, NA_character_, character(1)),
+        name            = column(items, \(t) t$name, "(Unknown)", character(1)),
+        artist          = vapply(items, \(t) artist_names(t$artists), character(1), USE.NAMES = FALSE),
+        album           = column(items, \(t) t$album$name, "", character(1)),
+        popularity      = column(items, \(t) as.integer(t$popularity), NA_integer_, integer(1)),
+        duration_ms     = column(items, \(t) as.numeric(t$duration_ms), NA_real_, numeric(1)),
+        album_image_url = vapply(items, \(t) first_image_url(t$album$images), character(1), USE.NAMES = FALSE),
+        spotify_url     = column(items, \(t) t$external_urls$spotify, NA_character_, character(1))
+    )
 }
 
 # Recently played: the same track can appear many times, keep the first
@@ -167,16 +236,13 @@ parse_recent_tracks <- function(data, count = 20) {
     items <- data$items
     if (length(items) == 0) return(NULL)
 
-    tracks <- dplyr::bind_rows(lapply(items, function(item) {
-        t <- item$track
-        tibble::tibble(
-            id          = t$id %||% NA_character_,
-            name        = t$name %||% "(Unknown)",
-            artist      = artist_names(t$artists),
-            album       = t$album$name %||% "",
-            spotify_url = t$external_urls$spotify %||% NA_character_
-        )
-    }))
+    tracks <- tibble::tibble(
+        id          = column(items, \(i) i$track$id, NA_character_, character(1)),
+        name        = column(items, \(i) i$track$name, "(Unknown)", character(1)),
+        artist      = vapply(items, \(i) artist_names(i$track$artists), character(1), USE.NAMES = FALSE),
+        album       = column(items, \(i) i$track$album$name, "", character(1)),
+        spotify_url = column(items, \(i) i$track$external_urls$spotify, NA_character_, character(1))
+    )
 
     head(dplyr::distinct(tracks, id, .keep_all = TRUE), count)
 }
@@ -184,20 +250,20 @@ parse_recent_tracks <- function(data, count = 20) {
 # One page of /me/playlists. The track count moved from `tracks` to `items` in
 # Spotify's API (both exist for now), so read whichever is there.
 parse_playlists_page <- function(items) {
+    # Spotify sends null in place of a playlist it can't show
+    items <- Filter(Negate(is.null), items)
     if (length(items) == 0) return(NULL)
 
-    dplyr::bind_rows(lapply(items, function(playlist) {
-        tibble::tibble(
-            id          = playlist$id %||% NA_character_,
-            name        = playlist$name %||% "(Untitled)",
-            description = playlist$description %||% "",
-            track_count = as.integer(playlist$items$total %||% playlist$tracks$total %||% 0L),
-            owner       = playlist$owner$display_name %||% "Unknown",
-            is_public   = isTRUE(playlist$public %||% TRUE),
-            image_url   = first_image_url(playlist$images),
-            spotify_url = playlist$external_urls$spotify %||% NA_character_
-        )
-    }))
+    tibble::tibble(
+        id          = column(items, \(p) p$id, NA_character_, character(1)),
+        name        = column(items, \(p) p$name, "(Untitled)", character(1)),
+        description = column(items, \(p) p$description, "", character(1)),
+        track_count = column(items, \(p) as.integer(p$items$total %||% p$tracks$total), 0L, integer(1)),
+        owner       = column(items, \(p) p$owner$display_name, "Unknown", character(1)),
+        is_public   = vapply(items, \(p) isTRUE(p$public %||% TRUE), logical(1), USE.NAMES = FALSE),
+        image_url   = vapply(items, \(p) first_image_url(p$images), character(1), USE.NAMES = FALSE),
+        spotify_url = column(items, \(p) p$external_urls$spotify, NA_character_, character(1))
+    )
 }
 
 # Genres across the user's top artists: one row per genre with how many artists

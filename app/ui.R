@@ -14,6 +14,8 @@ source("scripts/spotify_api.R", local = TRUE)
 source("scripts/display.R", local = TRUE)
 source("scripts/charts.R", local = TRUE)
 source("scripts/dialogs.R", local = TRUE)
+source("scripts/playlists.R", local = TRUE)
+source("scripts/playlists_module.R", local = TRUE)
 
 # Shared footer component for cross-linking between apps
 create_app_footer <- function(current_app = "") {
@@ -79,9 +81,11 @@ uiFunc <- function(req) {
                 tags$script(src = "www/redirect.js"),
                 tags$script(src = "www/preferences.js"),
                 tags$script(src = "www/tabs.js"),
+                tags$script(src = "www/playlists-cache.js"),
                 includeCSS("css/styles.css"),
-                # Automatically display a loading screen until UI is ready
-                autoWaiter()
+                # A waiter over the lists that are being fetched. Not over everything: it would
+                # also cover My Playlists, whose banner text changes with every batch
+                autoWaiter(id = c("top_artists_list", "top_tracks_list", "recently_played_list", "genre_plot_ui"))
             ),
 
             # Shared choices: the same on every tab, and remembered between visits.
@@ -300,31 +304,13 @@ uiFunc <- function(req) {
                 )
             ),
 
-            # My Playlists tab
+            # My Playlists tab (see scripts/playlists_module.R)
             nav_panel(
                 title = "My Playlists",
                 value = "my_playlists",
-                layout_sidebar(
-                    sidebar = sidebar(
-                        width = 350,
-                        h3("Your Playlists"),
-                        br(),
-                        p("Browse all your Spotify playlists, filtered by first letter."),
-                        br(),
-                        selectInput(
-                            "playlist_letter",
-                            "Filter by first letter:",
-                            choices = c("Loading..." = ""),
-                            selected = ""
-                        ),
-                        create_app_footer("trackteller")
-                    ),
-                    uiOutput("user_playlists_list"),
-                    div(style = "height: 40px;")
-                )
+                playlists_ui("playlists")
             ),
 
-            # Who is signed in, and the way out: top right, on every tab
             nav_spacer(),
             nav_item(uiOutput("account_ui"))
     )
