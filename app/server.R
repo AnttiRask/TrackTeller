@@ -108,6 +108,7 @@ server <- function(input, output, session) {
     # Handle logout button click
     observeEvent(input$logout_btn, {
         token_info(NULL)
+        user_display_name_val("")
         set_auth_message("text-info", "info-circle", "You have been logged out.")
     })
 
@@ -179,11 +180,18 @@ server <- function(input, output, session) {
         validate(need(res$state == "ok", res$message))
     }
 
-    output$user_display_name <- renderText({
+    # Top right of the navbar: who is signed in, and the Logout button
+    output$account_ui <- renderUI({
+        req(is_authenticated())
         name <- user_display_name_val()
-        if (nzchar(name)) paste("Welcome,", name, "!") else "Welcome!"
+        div(
+            class = "account-box",
+            span(class = "account-name",
+                 icon("circle-user"),
+                 if (nzchar(name)) paste("Signed in as", name) else "Signed in"),
+            actionButton("logout_btn", "Logout", class = "btn-outline-secondary btn-sm")
+        )
     })
-    outputOptions(output, "user_display_name", suspendWhenHidden = FALSE)
 
     # Get user profile to display
     observe({

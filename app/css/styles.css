@@ -82,6 +82,26 @@ p {
     color: #808080 !important;
 }
 
+/* Signed in as ..., Logout: top right of the navbar */
+.account-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 8px;
+}
+
+.account-name {
+    color: #b3b3b3;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.account-name .fa-circle-user,
+.account-name .fas {
+    margin-right: 6px;
+    color: #1DB954;
+}
+
 /* The line under a list: "Showing 20 of 50 artists" */
 .list-note {
     color: #b3b3b3 !important;

@@ -174,13 +174,7 @@ uiFunc <- function(req) {
                                              style = "color: #000;"),
                                 actionButton("create_playlist_artists", "Create Playlist from Top Artists",
                                            class = "btn-success", icon = icon("music"))
-                            ),
-                            br(),
-                            hr(),
-                            textOutput("user_display_name"),
-                            br(),
-                            actionButton("logout_btn", "Logout",
-                                       class = "btn-outline-secondary btn-sm")
+                            )
                         ),
 
                         create_app_footer("trackteller")
@@ -313,6 +307,10 @@ uiFunc <- function(req) {
                     uiOutput("user_playlists_list"),
                     div(style = "height: 40px;")
                 )
-            )
+            ),
+
+            # Who is signed in, and the way out: top right, on every tab
+            nav_spacer(),
+            nav_item(uiOutput("account_ui"))
     )
 }
