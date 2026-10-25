@@ -4,7 +4,8 @@ source(file.path(app_dir, "scripts", "playlists_module.R"))
 
 # A fake Spotify with `n` playlists, 50 to a page, that remembers how often it was asked.
 # `fail_at` makes the request for that offset fail.
-fake_spotify <- function(n, names = NULL, fail_at = NULL, duplicate_first_of_page_two = FALSE, shift_after_first = FALSE) {
+fake_spotify <- function(n, names = NULL, fail_at = NULL, duplicate_first_of_page_two = FALSE, shift_after_first = FALSE,
+                         short_page_at = NULL, with_next = TRUE) {
     if (is.null(names)) {
         names <- sprintf("%s playlist %04d",
                          c("Zebra", "Mix", "Apple", "99 Songs", "Ääni", "banana")[(seq_len(n) %% 6) + 1],
@@ -28,11 +29,17 @@ fake_spotify <- function(n, names = NULL, fail_at = NULL, duplicate_first_of_pag
         if (shift_after_first && env$calls > 1L) order <- c(n, seq_len(n - 1L))
         positions <- seq_len(n)[seq_len(n) > offset & seq_len(n) <= offset + query$limit]
         idx <- order[positions]
+        # short_page_at: Spotify answers this page with one item fewer than asked for (an
+        # unavailable playlist left out), in the middle of the list
+        if (!is.null(short_page_at) && offset == short_page_at) idx <- utils::head(idx, -1)
         items <- lapply(idx, function(i) list(
             id = ids[i], name = names[i], owner = list(display_name = "Pat"), public = (i %% 2 == 0),
             tracks = list(total = i), images = list(), external_urls = list(spotify = paste0("https://open.spotify.com/playlist/", ids[i]))
         ))
-        list(state = "ok", data = list(items = items, total = n), http_status = 200L, message = NULL)
+        data <- list(items = items, total = n, offset = offset, limit = query$limit)
+        # Spotify's paging object: `next` is null on the last page
+        if (with_next) data["next"] <- list(if (offset + query$limit < n) paste0("https://api.spotify.com/v1/me/playlists?offset=", offset + query$limit) else NULL)
+        list(state = "ok", data = data, http_status = 200L, message = NULL)
     }
     env$get <- function(path, query = list()) promises::promise_resolve(env$get_now(path, query))
     env
@@ -565,8 +572,7 @@ test_that("a list that changes while it loads is reported, not hidden", {
         expect_equal(total(), 1000L)
         expect_equal(nrow(all_data()), 999L)
         expect_equal(missing_count(), 1L)
-        expect_match(output$sync_note$html, "Spotify says you have 1,000 playlists, but 999 arrived")
-        expect_match(output$sync_note$html, "Reload playlists")
+        expect_match(output$sync_note$html, "1 playlist in your Spotify app can't be loaded")
     })
 
     api <- fake_spotify(1000)
@@ -597,5 +603,58 @@ test_that("reloading keeps the list on screen while the new one loads, and repla
         expect_false(cache_present())
         expect_equal(nrow(all_data()), 120)
         expect_equal(api$calls, 6L)                  # 3 pages, twice
+    })
+})
+
+# ---- the end of the list is Spotify's `next`, not a page that is shorter than asked for ----
+
+test_that("a short page in the middle does not end the load", {
+    # Spotify answered page 3 (offset 100) with 49 items, as it did at about playlist 2,550
+    # on the owner's account, where the load stopped at 2,599 of 4,213
+    api <- fake_spotify(300, short_page_at = 100)
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        expect_equal(status(), "done")
+        expect_equal(api$offsets, c(0, 50, 100, 150, 200, 250))       # it went on to the end
+        expect_equal(nrow(all_data()), 299)                            # one fewer: the one Spotify left out
+        expect_equal(missing_count(), 1L)
+    })
+})
+
+test_that("the load ends at the page whose `next` is empty, also when that page is full", {
+    api <- fake_spotify(150)                 # exactly three full pages
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        expect_equal(status(), "done")
+        expect_equal(api$offsets, c(0, 50, 100))        # no request for a fourth, empty page
+        expect_equal(nrow(all_data()), 150)
+        expect_equal(missing_count(), 0L)
+    })
+})
+
+test_that("without a `next` in the answer, the total decides", {
+    api <- fake_spotify(120, short_page_at = 50, with_next = FALSE)
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        expect_equal(status(), "done")
+        expect_equal(api$offsets, c(0, 50, 100))
+        expect_equal(nrow(all_data()), 119)
+    })
+})
+
+test_that("empty entries in a page are left out, not turned into playlists", {
+    items <- list(list(id = "a", name = "One"), NULL, list(id = "b", name = "Two"))
+    out <- parse_playlists_page(items)
+    expect_equal(out$id, c("a", "b"))
+    expect_null(parse_playlists_page(list(NULL, NULL)))
+})
+
+test_that("a playlist Spotify counts but never sends is reported without blaming the user's list", {
+    # 4,213 counted, 4,212 sent, every time: nothing came twice
+    api <- fake_spotify(300, short_page_at = 100)
+    testServer(playlists_server, args = args_for(api), {
+        finish_loading(session, status)
+        expect_equal(missing_count(), 1L)
+        expect_match(output$sync_note$html, "1 playlist in your Spotify app can't be loaded")
     })
 })

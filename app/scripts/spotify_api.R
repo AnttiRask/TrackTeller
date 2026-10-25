@@ -250,6 +250,8 @@ parse_recent_tracks <- function(data, count = 20) {
 # One page of /me/playlists. The track count moved from `tracks` to `items` in
 # Spotify's API (both exist for now), so read whichever is there.
 parse_playlists_page <- function(items) {
+    # Spotify sends null in place of a playlist it can't show
+    items <- Filter(Negate(is.null), items)
     if (length(items) == 0) return(NULL)
 
     tibble::tibble(

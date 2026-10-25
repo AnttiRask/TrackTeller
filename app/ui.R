@@ -83,8 +83,9 @@ uiFunc <- function(req) {
                 tags$script(src = "www/tabs.js"),
                 tags$script(src = "www/playlists-cache.js"),
                 includeCSS("css/styles.css"),
-                # Automatically display a loading screen until UI is ready
-                autoWaiter()
+                # A waiter over the lists that are being fetched. Not over everything: it would
+                # also cover My Playlists, whose banner text changes with every batch
+                autoWaiter(id = c("top_artists_list", "top_tracks_list", "recently_played_list", "genre_plot_ui"))
             ),
 
             # Shared choices: the same on every tab, and remembered between visits.

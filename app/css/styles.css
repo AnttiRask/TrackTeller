@@ -359,3 +359,17 @@ a:focus, button:focus, input:focus, select:focus {
 .skip-link:focus {
     top: 0;
 }
+/* Shiny marks an output "recalculating" while it updates: it fades it to 30% and, from the
+   busy-indicator CSS, adds its own ring spinner and a minimum height. My Playlists updates its
+   banner text and list with every batch that arrives, which showed as flashing and as a second
+   (white) spinner behind our own: keep it steady. */
+.playlist-area .recalculating,
+.playlist-area .recalculating > * {
+    opacity: 1 !important;
+    transition: none !important;
+    min-height: 0 !important;
+}
+.playlist-area .recalculating::after,
+.playlist-area .recalculating::before {
+    display: none !important;
+}

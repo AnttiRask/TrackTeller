@@ -110,6 +110,7 @@ playlists_ui <- function(id) {
             create_app_footer("trackteller")
         ),
         # The banners are there once; only their text changes (see playlist_pager_ui)
+        div(class = "playlist-area",
         conditionalPanel(
             condition = "output.banner_state == 'loading'",
             ns = ns,
@@ -129,6 +130,7 @@ playlists_ui <- function(id) {
         uiOutput(ns("list")),
         playlist_pager_ui(ns, "bottom"),
         div(style = "height: 40px;")
+        )
     )
 }
 
@@ -153,7 +155,7 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         reset_data <- function() {
             fetched$data <- NULL
             fetched$offset <- 0L
-            shown$data <- NULL
+                        shown$data <- NULL
             fetched$run <- fetched$run + 1L     # what is still on its way now belongs to the past
         }
         reset_data()
@@ -239,16 +241,21 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
                         batch <- parse_playlists_page(items)
                         fetched$data <- if (is.null(fetched$data)) batch else dplyr::bind_rows(fetched$data, batch)
                         fetched$offset <- fetched$offset + batch_size
-                        loaded(nrow(fetched$data))
+                        loaded(if (is.null(fetched$data)) 0L else nrow(fetched$data))
                     }
 
-                    if (length(items) < batch_size) {
+                    # The end is where Spotify has no `next` page. A page shorter than asked for
+                    # is not the end: Spotify leaves out playlists it can't show, in the middle.
+                    last_page_reached <- if ("next" %in% names(res$data)) {
+                        is.null(res$data[["next"]])
+                    } else {
+                        !is.na(isolate(total())) && fetched$offset >= isolate(total())
+                    }
+                    if (length(items) == 0 || last_page_reached) {
                         # A playlist added while we were loading shifts the pages: keep each once
-                        fetched$data <- dplyr::distinct(fetched$data, id, .keep_all = TRUE)
-                        loaded(nrow(fetched$data))
-                        # Spotify's list can change while we page through it (a playlist played,
-                        # created or removed): a page boundary then moves, one playlist is seen
-                        # twice and another is never seen. Say so, don't pretend.
+                        if (!is.null(fetched$data)) fetched$data <- dplyr::distinct(fetched$data, id, .keep_all = TRUE)
+                        loaded(if (is.null(fetched$data)) 0L else nrow(fetched$data))
+                        # Spotify counts playlists its API no longer has: say how many, don't pretend
                         reported <- isolate(total())
                         missing_count(if (!is.na(reported) && nrow(fetched$data) < reported) reported - nrow(fetched$data) else 0L)
                         had_copy <- !is.null(cached$data)
@@ -454,11 +461,12 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
 
         output$sync_note <- renderUI({
             if (status() == "done" && missing_count() > 0) {
+                n <- missing_count()
                 tags$p(
                     class = "playlist-warning",
-                    paste0("Spotify says you have ", format(total(), big.mark = ","), " playlists, but ",
-                           format(loaded(), big.mark = ","), " arrived: your list changed while it was loading. ",
-                           "Use \"Reload playlists\" to load it again.")
+                    paste0(format(n, big.mark = ","), if (n == 1) " playlist" else " playlists",
+                           " in your Spotify app can't be loaded: Spotify's API no longer has ",
+                           if (n == 1) "it." else "them.")
                 )
             }
         })
