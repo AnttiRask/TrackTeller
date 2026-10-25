@@ -106,15 +106,22 @@ server <- function(input, output, session) {
     })
 
     # Handle logout button click
+    # The button is in the navbar on every tab, so it is easy to hit by accident: ask first
     observeEvent(input$logout_btn, {
+        showModal(logout_dialog())
+    })
+
+    observeEvent(input$confirm_logout, {
+        removeModal()
         token_info(NULL)
+        user_display_name_val("")
         set_auth_message("text-info", "info-circle", "You have been logged out.")
     })
 
     # The login ended (expired or revoked): forget the token, say so on the login view
     end_session <- function() {
         token_info(NULL)
-        set_auth_message("text-warning", "exclamation-triangle", "Session expired. Please login again.")
+        set_auth_message("text-warning", "exclamation-triangle", "Session expired. Please log in again.")
     }
 
     # A valid access token for the current login, renewed when it is about to
@@ -179,11 +186,18 @@ server <- function(input, output, session) {
         validate(need(res$state == "ok", res$message))
     }
 
-    output$user_display_name <- renderText({
+    # Top right of the navbar: who is signed in, and the Log out button
+    output$account_ui <- renderUI({
+        req(is_authenticated())
         name <- user_display_name_val()
-        if (nzchar(name)) paste("Welcome,", name, "!") else "Welcome!"
+        div(
+            class = "account-box",
+            span(class = "account-name",
+                 icon("circle-user"),
+                 if (nzchar(name)) paste("Signed in as", name) else "Signed in"),
+            actionButton("logout_btn", "Log out", class = "btn-outline-secondary btn-sm")
+        )
     })
-    outputOptions(output, "user_display_name", suspendWhenHidden = FALSE)
 
     # Get user profile to display
     observe({
@@ -198,103 +212,83 @@ server <- function(input, output, session) {
     })
 
     # ============================================
-    # SYNCED TIME RANGES
+    # SHARED CHOICES (the bar above the tabs)
     # ============================================
 
-    # Sync time_range (Top Artists) -> other tabs
-    # Only update if values differ to prevent infinite loops
-    observeEvent(input$time_range, {
-        if (!is.null(input$time_range_tracks) && input$time_range_tracks != input$time_range) {
-            updateSelectInput(session, "time_range_tracks", selected = input$time_range)
-        }
-        if (!is.null(input$time_range_genres) && input$time_range_genres != input$time_range) {
-            updateSelectInput(session, "time_range_genres", selected = input$time_range)
-        }
-    }, ignoreInit = TRUE)
+    time_range  <- reactive(input$time_range %||% "short_term")
+    shown_count <- reactive(input$shown_count %||% COUNT_DEFAULT)
 
-    # Sync time_range_tracks (Top Tracks) -> other tabs
-    observeEvent(input$time_range_tracks, {
-        if (!is.null(input$time_range) && input$time_range != input$time_range_tracks) {
-            updateSelectInput(session, "time_range", selected = input$time_range_tracks)
-        }
-        if (!is.null(input$time_range_genres) && input$time_range_genres != input$time_range_tracks) {
-            updateSelectInput(session, "time_range_genres", selected = input$time_range_tracks)
-        }
-    }, ignoreInit = TRUE)
+    # A value, or NULL when computing it fails or is not ready (the note under a list
+    # must not repeat the list's own error message)
+    quiet <- function(value) tryCatch(value, error = function(e) NULL)
 
-    # Sync time_range_genres (Top Genres) -> other tabs
-    observeEvent(input$time_range_genres, {
-        if (!is.null(input$time_range) && input$time_range != input$time_range_genres) {
-            updateSelectInput(session, "time_range", selected = input$time_range_genres)
-        }
-        if (!is.null(input$time_range_tracks) && input$time_range_tracks != input$time_range_genres) {
-            updateSelectInput(session, "time_range_tracks", selected = input$time_range_genres)
-        }
-    }, ignoreInit = TRUE)
+    # What the browser remembered from the last visit (www/preferences.js sends it once
+    # per session). The data waits until the remembered time range is in place, so that
+    # a visit with a saved range doesn't fetch the default range first.
+    prefs_ready <- reactiveVal(FALSE)
+    saved_time_range <- reactiveVal(NULL)
 
-    # Get the current time range (used by Top Artists)
-    get_time_range <- reactive({
-        time_range <- input$time_range
-        if (is.null(time_range)) "medium_term" else time_range
+    observeEvent(input$saved_prefs, {
+        prefs <- sanitise_prefs(input$saved_prefs)
+
+        if (is.null(prefs$time_range)) {
+            prefs_ready(TRUE)
+        } else {
+            updateSelectInput(session, "time_range", selected = prefs$time_range)
+            saved_time_range(prefs$time_range)
+        }
+        if (!is.null(prefs$shown_count)) {
+            updateSliderInput(session, "shown_count", value = prefs$shown_count)
+        }
+
+        # From now on the browser may save what the user changes
+        session$sendCustomMessage("prefs_applied", TRUE)
+    }, once = TRUE)
+
+    observe({
+        wanted <- saved_time_range()
+        req(wanted)
+        if (isolate(prefs_ready())) return()
+        if (identical(input$time_range, wanted)) prefs_ready(TRUE)
     })
 
-    # Get time range for Top Tracks
-    get_time_range_tracks <- reactive({
-        time_range <- input$time_range_tracks
-        if (is.null(time_range)) "medium_term" else time_range
-    })
-
-    # Get time range for Top Genres
-    get_time_range_genres <- reactive({
-        time_range <- input$time_range_genres
-        if (is.null(time_range)) "medium_term" else time_range
+    # If the browser never reports (scripts blocked), don't wait for it for long
+    prefs_waits <- reactiveVal(0L)
+    observe({
+        if (isolate(prefs_ready())) return()
+        invalidateLater(1500, session)
+        waited <- isolate(prefs_waits())
+        prefs_waits(waited + 1L)
+        if (waited >= 1L) prefs_ready(TRUE)
     })
 
     # ============================================
     # TOP ARTISTS TAB
     # ============================================
 
-    # Store max available artists for current time range
-    max_artists_available <- reactiveVal(50)
-
     # Fetch ALL top artists (up to 50) based on time range
     all_top_artists_data <- reactive({
-        req(is_authenticated())
+        req(is_authenticated(), prefs_ready())
 
         res <- api_get("/me/top/artists",
-                       list(limit = 50, time_range = get_time_range()))
+                       list(limit = 50, time_range = time_range()))
         stop_if_failed(res)
 
         parse_top_artists(res$data)
     })
 
-    # Update slider max when data changes
-    observe({
-        data <- all_top_artists_data()
-        if (!is.null(data) && nrow(data) > 0) {
-            available <- nrow(data)
-            max_artists_available(available)
-
-            # Default to 20, or max available if less than 20
-            default_value <- min(20, available)
-
-            updateSliderInput(session, "top_artists_count",
-                max = available,
-                value = default_value
-            )
-        }
-    })
-
-    # Filter artists based on slider (uses pre-fetched data)
+    # The first `shown_count` of them (or all there are)
     top_artists_data <- reactive({
         data <- all_top_artists_data()
         req(data)
 
-        limit <- input$top_artists_count
-        if (is.null(limit)) limit <- 20
+        head(data, displayed_count(shown_count(), nrow(data)))
+    })
 
-        # Return only the requested number of artists
-        head(data, limit)
+    output$top_artists_note <- renderUI({
+        data <- quiet(all_top_artists_data())
+        note <- count_note(shown_count(), if (is.null(data)) NULL else nrow(data), "artist", "artists")
+        if (!is.null(note)) tags$p(class = "list-note", note)
     })
 
     # Top artists list with cards
@@ -368,47 +362,29 @@ server <- function(input, output, session) {
     # TOP TRACKS TAB
     # ============================================
 
-    # Store max available tracks for current time range
-    max_tracks_available <- reactiveVal(50)
-
     # Fetch ALL top tracks (up to 50) based on time range
     all_top_tracks_data <- reactive({
-        req(is_authenticated())
+        req(is_authenticated(), prefs_ready())
 
         res <- api_get("/me/top/tracks",
-                       list(limit = 50, time_range = get_time_range_tracks()))
+                       list(limit = 50, time_range = time_range()))
         stop_if_failed(res)
 
         parse_top_tracks(res$data)
     })
 
-    # Update slider max when data changes
-    observe({
-        data <- all_top_tracks_data()
-        if (!is.null(data) && nrow(data) > 0) {
-            available <- nrow(data)
-            max_tracks_available(available)
-
-            # Default to 20, or max available if less than 20
-            default_value <- min(20, available)
-
-            updateSliderInput(session, "top_tracks_count",
-                max = available,
-                value = default_value
-            )
-        }
-    })
-
-    # Filter tracks based on slider (uses pre-fetched data)
+    # The first `shown_count` of them (or all there are)
     top_tracks_data <- reactive({
         data <- all_top_tracks_data()
         req(data)
 
-        limit <- input$top_tracks_count
-        if (is.null(limit)) limit <- 20
+        head(data, displayed_count(shown_count(), nrow(data)))
+    })
 
-        # Return only the requested number of tracks
-        head(data, limit)
+    output$top_tracks_note <- renderUI({
+        data <- quiet(all_top_tracks_data())
+        note <- count_note(shown_count(), if (is.null(data)) NULL else nrow(data), "track", "tracks")
+        if (!is.null(note)) tags$p(class = "list-note", note)
     })
 
     # Top tracks list with cards
@@ -490,7 +466,7 @@ server <- function(input, output, session) {
 
     # Fetched once (the last 50); the slider only slices what is already loaded
     recently_played_all <- reactive({
-        req(is_authenticated())
+        req(is_authenticated(), prefs_ready())
 
         res <- api_get("/me/player/recently-played", list(limit = 50))
         stop_if_failed(res)
@@ -502,9 +478,13 @@ server <- function(input, output, session) {
         tracks <- recently_played_all()
         if (is.null(tracks)) return(NULL)
 
-        count <- input$recent_tracks_display_count
-        if (is.null(count)) count <- 20
-        head(tracks, count)
+        head(tracks, displayed_count(shown_count(), nrow(tracks)))
+    })
+
+    output$recently_played_note <- renderUI({
+        tracks <- quiet(recently_played_all())
+        note <- count_note(shown_count(), if (is.null(tracks)) NULL else nrow(tracks), "track", "tracks")
+        if (!is.null(note)) tags$p(class = "list-note", note)
     })
 
     output$recently_played_list <- renderUI({
@@ -558,13 +538,29 @@ server <- function(input, output, session) {
 
     # Fetch top artists for genre analysis
     genre_data <- reactive({
-        req(is_authenticated())
+        req(is_authenticated(), prefs_ready())
 
         res <- api_get("/me/top/artists",
-                       list(limit = 50, time_range = get_time_range_genres()))
+                       list(limit = 50, time_range = time_range()))
         stop_if_failed(res)
 
         summarise_genres(res$data)
+    })
+
+    output$genre_note <- renderUI({
+        data <- quiet(genre_data())
+        note <- count_note(shown_count(), if (is.null(data)) NULL else nrow(data),
+                           "genre", "genres", cap = GENRE_CHART_MAX)
+        if (!is.null(note)) tags$p(class = "list-note", note)
+    })
+
+    # The chart sits in a plain container that fills the rest of the screen but never gets
+    # less than the bars need. Placed directly in the page's fill layout the plot would be
+    # squeezed into whatever height is left.
+    output$genre_plot_ui <- renderUI({
+        data <- quiet(genre_data())
+        n <- if (is.null(data)) 0L else displayed_count(shown_count(), nrow(data), cap = GENRE_CHART_MAX)
+        plotlyOutput("genre_plot", height = genre_chart_css_height(n))
     })
 
     # Genre distribution plot - green bars, title case
@@ -574,42 +570,9 @@ server <- function(input, output, session) {
 
         validate(need(nrow(data) > 0, "No genre data available."))
 
-        top_count <- input$top_genres_count
-        if (is.null(top_count)) top_count <- 10
-
-        # Take top N genres
-        data <- head(data, top_count)
-
-        # Create horizontal bar chart with green color
-        plot <- data %>%
-            mutate(genre_display = factor(genre_display, levels = rev(genre_display))) %>%
-            ggplot(aes(x = genre_display, y = count,
-                      text = paste0(genre_display, "\n",
-                                   "Artists: ", count, "\n",
-                                   "Percentage: ", percentage, "%\n",
-                                   artist_names))) +
-            geom_col(fill = spotify_colors$dark_green, alpha = 0.8, width = 0.7) +
-            coord_flip() +
-            labs(
-                title = paste("Your Top", top_count, "Genres"),
-                x = NULL,
-                y = "Number of Artists"
-            ) +
-            scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-            theme_spotify() +
-            theme(
-                panel.grid.major.x = element_line(
-                    color = spotify_colors$white,
-                    linewidth = 0.4,
-                    linetype = 2
-                ),
-                panel.grid.major.y = element_blank()
-            )
-
-        ggplotly(plot, tooltip = "text") %>%
-            plotly::layout(
-                hoverlabel = list(bgcolor = spotify_colors$black)
-            )
+        # Take the top N genres (never more than the chart can show)
+        top_count <- displayed_count(shown_count(), nrow(data), cap = GENRE_CHART_MAX)
+        genre_chart(head(data, top_count))
     })
 
     # ============================================
@@ -994,7 +957,7 @@ server <- function(input, output, session) {
         content = function(file) {
             tracks <- isolate(all_top_tracks_data())
             username <- isolate(user_display_name_val())
-            time_label <- switch(isolate(input$time_range_tracks),
+            time_label <- switch(isolate(input$time_range),
                 "short_term"  = "Last 4 Weeks",
                 "medium_term" = "Last 6 Months",
                 "long_term"   = "All Time",
@@ -1025,6 +988,9 @@ server <- function(input, output, session) {
             title = "Create Playlist",
             p(class = "text-muted", "Leave the name empty to use a default name."),
             textInput("new_playlist_name", "Playlist name:", placeholder = "e.g. Summer Vibes"),
+            checkboxInput("new_playlist_public",
+                          "Make it public (anyone can find it on your Spotify profile)",
+                          value = FALSE),
             footer = tagList(
                 modalButton("Cancel"),
                 actionButton("confirm_create_playlist", "Create", class = "btn-success")
@@ -1107,14 +1073,14 @@ server <- function(input, output, session) {
             "{if (nzchar(name_in)) name_in else default_name} ({Sys.Date()})"
         )
 
-        # Create the playlist (public, as before; the private default comes with
-        # the playlist options)
+        # Create the playlist: private unless the box was ticked
+        make_public <- isTRUE(input$new_playlist_public)
         create_res <- api_request(function(token) {
             spotify_create_playlist(
                 token, user_id,
                 name = as.character(playlist_name),
                 description = "Created with TrackTeller \u2014 trackteller.youcanbeapirate.com",
-                public = TRUE
+                public = make_public
             )
         })
 
@@ -1134,7 +1100,9 @@ server <- function(input, output, session) {
             playlist_url <- paste0("https://open.spotify.com/playlist/", playlist_id)
             showModal(modalDialog(
                 title = "Playlist Created!",
-                p(icon("check-circle", style = "color:#1DB954;"), " Your playlist is ready."),
+                p(icon("check-circle", style = "color:#1DB954;"),
+                  if (make_public) " Your playlist is ready. It is public."
+                  else " Your playlist is ready. It is private: only you can see it."),
                 tags$a("Open in Spotify", href = playlist_url, target = "_blank",
                        class = "btn btn-success"),
                 footer  = modalButton("Close"),

@@ -11,6 +11,9 @@ source("scripts/global.R", local = TRUE)
 source("scripts/config.R", local = TRUE)
 source("scripts/spotify_oauth.R", local = TRUE)
 source("scripts/spotify_api.R", local = TRUE)
+source("scripts/display.R", local = TRUE)
+source("scripts/charts.R", local = TRUE)
+source("scripts/dialogs.R", local = TRUE)
 
 # Shared footer component for cross-linking between apps
 create_app_footer <- function(current_app = "") {
@@ -24,6 +27,8 @@ create_app_footer <- function(current_app = "") {
                     class = "d-flex justify-content-center gap-3 flex-wrap",
                     if(current_app != "bibliostatus")
                         a(href = "https://bibliostatus.youcanbeapirate.com", "BiblioStatus"),
+                    if(current_app != "fillaristatus")
+                        a(href = "https://fillaristatus.youcanbeapirate.com", "FillariStatus"),
                     if(current_app != "gallery")
                         a(href = "https://galleryoftheday.youcanbeapirate.com", "Gallery of the Day"),
                     if(current_app != "trackteller")
@@ -68,12 +73,59 @@ uiFunc <- function(req) {
             )
         ),
 
-        header = tags$head(
-            tags$link(rel = "icon", type = "image/png", href = "www/favicon.png"),
-            tags$script(src = "www/redirect.js"),
-            includeCSS("css/styles.css"),
-            # Automatically display a loading screen until UI is ready
-            autoWaiter()
+        header = tagList(
+            tags$head(
+                tags$link(rel = "icon", type = "image/png", href = "www/favicon.png"),
+                tags$script(src = "www/redirect.js"),
+                tags$script(src = "www/preferences.js"),
+                includeCSS("css/styles.css"),
+                # Automatically display a loading screen until UI is ready
+                autoWaiter()
+            ),
+
+            # Shared choices: the same on every tab, and remembered between visits.
+            # Shown only when logged in, and not on My Playlists (nothing to choose there).
+            conditionalPanel(
+                condition = "output.is_authenticated == true && input.main_navbar != 'my_playlists'",
+                div(
+                    class = "shared-controls",
+                    conditionalPanel(
+                        condition = "input.main_navbar != 'recently_played'",
+                        selectInput(
+                            "time_range",
+                            "Time range:",
+                            choices = TIME_RANGES,
+                            selected = "short_term",
+                            selectize = FALSE,
+                            width = "220px"
+                        )
+                    ),
+                    # Recently Played has no time range; the field stays so that the bar
+                    # doesn't change shape from tab to tab
+                    conditionalPanel(
+                        condition = "input.main_navbar == 'recently_played'",
+                        div(
+                            class = "form-group shiny-input-container",
+                            style = "width: 220px;",
+                            tags$label(class = "control-label", `for` = "time_range_recent", "Time range:"),
+                            tags$select(id = "time_range_recent", class = "form-select", disabled = NA,
+                                        tags$option("Recently Played"))
+                        )
+                    ),
+                    sliderInput(
+                        "shown_count",
+                        "Number to show:",
+                        min = COUNT_MIN,
+                        max = COUNT_MAX,
+                        value = COUNT_DEFAULT,
+                        step = COUNT_STEP,
+                        ticks = FALSE,
+                        width = "260px"
+                    ),
+                    p(class = "text-muted small shared-controls-note",
+                      "Spotify only provides three time ranges. Your choices are remembered in this browser.")
+                )
+            )
         ),
 
         # Application title
@@ -103,9 +155,9 @@ uiFunc <- function(req) {
                             br(),
                             p("Discover insights about your Spotify listening habits."),
                             br(),
-                            p("Login to see your top artists, tracks, genres, and create playlists."),
+                            p("Log in to see your top artists, tracks, genres, and create playlists."),
                             br(),
-                            actionButton("login_btn", "Login with Spotify",
+                            actionButton("login_btn", "Log in with Spotify",
                                        class = "btn-success btn-lg",
                                        icon = icon("spotify")),
                             br(),
@@ -128,36 +180,18 @@ uiFunc <- function(req) {
                             h3("Your Top Artists"),
                             br(),
                             p("Ranked by how much you listen to them."),
-                            br(),
-                            selectInput(
-                                "time_range",
-                                "Time range:",
-                                choices = c(
-                                    "Last 4 weeks" = "short_term",
-                                    "Last 6 months" = "medium_term",
-                                    "All time" = "long_term"
-                                ),
-                                selected = "short_term"
-                            ),
-                            br(),
-                            sliderInput(
-                                "top_artists_count",
-                                "Number of artists to show:",
-                                min = 10,
-                                max = 50,
-                                value = 20,
-                                step = 5
-                            ),
-                            br(),
-                            p(class = "text-muted small",
-                              "Note: Spotify only provides these three time ranges."),
-                            br(),
-                            hr(),
-                            textOutput("user_display_name"),
-                            br(),
-                            actionButton("logout_btn", "Logout",
-                                       class = "btn-outline-secondary btn-sm")
-                        )
+                            div(
+                                class = "d-grid gap-2 sidebar-actions",
+                                downloadButton("download_artists_card", "Share Top Artists",
+                                             icon = icon("share-nodes"),
+                                             class = "btn-success",
+                                             style = "color: #000;"),
+                                actionButton("create_playlist_artists", "Create Playlist from Top Artists",
+                                           class = "btn-success", icon = icon("music"))
+                            )
+                        ),
+
+                        create_app_footer("trackteller")
                     ),
                     # Show welcome message when not authenticated
                     conditionalPanel(
@@ -190,15 +224,7 @@ uiFunc <- function(req) {
                     # Show artist list when authenticated
                     conditionalPanel(
                         condition = "output.is_authenticated == true",
-                        div(
-                            style = "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;",
-                            downloadButton("download_artists_card", "Share Top Artists",
-                                         icon = icon("share-nodes"),
-                                         class = "btn-success",
-                                         style = "color: #000;"),
-                            actionButton("create_playlist_artists", "Create Playlist from Top Artists",
-                                       class = "btn-success", icon = icon("music"))
-                        ),
+                        uiOutput("top_artists_note"),
                         uiOutput("top_artists_list"),
                         div(style = "height: 40px;")
                     )
@@ -215,36 +241,18 @@ uiFunc <- function(req) {
                         h3("Your Top Tracks"),
                         br(),
                         p("Your most played tracks, ranked by listening frequency."),
-                        br(),
-                        selectInput(
-                            "time_range_tracks",
-                            "Time range:",
-                            choices = c(
-                                "Last 4 weeks" = "short_term",
-                                "Last 6 months" = "medium_term",
-                                "All time" = "long_term"
-                            ),
-                            selected = "short_term"
+                        div(
+                            class = "d-grid gap-2 sidebar-actions",
+                            downloadButton("download_tracks_card", "Share Top Tracks",
+                                         icon = icon("share-nodes"),
+                                         class = "btn-success",
+                                         style = "color: #000;"),
+                            actionButton("create_playlist_tracks", "Create Playlist from Top Tracks",
+                                       class = "btn-success", icon = icon("music"))
                         ),
-                        br(),
-                        sliderInput(
-                            "top_tracks_count",
-                            "Number of tracks to show:",
-                            min = 10,
-                            max = 50,
-                            value = 20,
-                            step = 5
-                        )
+                        create_app_footer("trackteller")
                     ),
-                    div(
-                        style = "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;",
-                        downloadButton("download_tracks_card", "Share Top Tracks",
-                                     icon = icon("share-nodes"),
-                                     class = "btn-success",
-                                     style = "color: #000;"),
-                        actionButton("create_playlist_tracks", "Create Playlist from Top Tracks",
-                                   class = "btn-success", icon = icon("music"))
-                    ),
+                    uiOutput("top_tracks_note"),
                     uiOutput("top_tracks_list"),
                     div(style = "height: 40px;")
                 )
@@ -260,21 +268,14 @@ uiFunc <- function(req) {
                         h3("Recently Played"),
                         br(),
                         p("Your most recently played tracks."),
-                        br(),
-                        sliderInput(
-                            "recent_tracks_display_count",
-                            "Number of tracks to show:",
-                            min = 10,
-                            max = 50,
-                            value = 20,
-                            step = 5
-                        )
+                        div(
+                            class = "d-grid gap-2 sidebar-actions",
+                            actionButton("create_playlist_recent", "Create Playlist from Recently Played",
+                                       class = "btn-success", icon = icon("music"))
+                        ),
+                        create_app_footer("trackteller")
                     ),
-                    div(
-                        style = "margin-bottom: 16px;",
-                        actionButton("create_playlist_recent", "Create Playlist from Recently Played",
-                                   class = "btn-success", icon = icon("music"))
-                    ),
+                    uiOutput("recently_played_note"),
                     uiOutput("recently_played_list"),
                     div(style = "height: 40px;")
                 )
@@ -290,28 +291,10 @@ uiFunc <- function(req) {
                         h3("Your Top Genres"),
                         br(),
                         p("Genre distribution across your top artists."),
-                        br(),
-                        selectInput(
-                            "time_range_genres",
-                            "Time range:",
-                            choices = c(
-                                "Last 4 weeks" = "short_term",
-                                "Last 6 months" = "medium_term",
-                                "All time" = "long_term"
-                            ),
-                            selected = "short_term"
-                        ),
-                        br(),
-                        sliderInput(
-                            "top_genres_count",
-                            "Number of top genres to show:",
-                            min = 5,
-                            max = 20,
-                            value = 10,
-                            step = 1
-                        )
+                        create_app_footer("trackteller")
                     ),
-                    plotlyOutput("genre_plot", height = 700),
+                    uiOutput("genre_note"),
+                    uiOutput("genre_plot_ui"),
                     div(style = "height: 40px;")
                 )
             ),
@@ -332,14 +315,16 @@ uiFunc <- function(req) {
                             "Filter by first letter:",
                             choices = c("Loading..." = ""),
                             selected = ""
-                        )
+                        ),
+                        create_app_footer("trackteller")
                     ),
                     uiOutput("user_playlists_list"),
                     div(style = "height: 40px;")
                 )
             ),
 
-        # Add footer with cross-linking
-        footer = create_app_footer("trackteller")
+            # Who is signed in, and the way out: top right, on every tab
+            nav_spacer(),
+            nav_item(uiOutput("account_ui"))
     )
 }

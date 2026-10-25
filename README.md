@@ -51,7 +51,7 @@ TrackTeller/
 
 ## 🔄 How It Works
 
-1. **Login**: Click "Login with Spotify" to authenticate via OAuth.
+1. **Login**: Click "Log in with Spotify" to authenticate via OAuth.
 2. **Top Artists**: See your most-listened artists ranked with popularity scores and Spotify links.
 3. **Top Tracks**: Browse your most played tracks with artist, album, and popularity info.
 4. **Recently Played**: See what you've been listening to lately.

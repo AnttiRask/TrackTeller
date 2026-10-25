@@ -6,14 +6,14 @@ spotify_colors <- list(
     white       = "#FFFFFF"
 )
 
-theme_spotify <- function(){
+theme_spotify <- function(base_size = 20){
     color.background = spotify_colors$black
     color.grid.major = spotify_colors$white
     color.text       = spotify_colors$dark_green
     color.text.2     = spotify_colors$light_green
     color.axis       = spotify_colors$white
     
-    theme_bw(base_size = 20, base_family = "Gotham") +
+    theme_bw(base_size = base_size, base_family = "Gotham") +
         
         theme(
             # Axis
