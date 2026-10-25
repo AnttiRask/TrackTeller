@@ -64,6 +64,21 @@ server <- function(input, output, session) {
         query <- parseQueryString(session$clientData$url_search)
 
         if (!is.null(query$code) && is.null(isolate(token_info()))) {
+            # The browser reports the nonce it kept from the login (www/redirect.js) once it
+            # connects; until then there is nothing to check the state against
+            if (is.null(input$oauth_nonce)) return()
+
+            # A code that comes back with a state this app didn't issue (or for another
+            # browser, or too late) is not used
+            checked <- oauth_state_check(query$state, input$oauth_nonce, SPOTIFY_CLIENT_SECRET)
+            if (!checked$ok) {
+                message("[oauth] state check failed: ", checked$reason)
+                updateQueryString("?", mode = "replace")
+                set_auth_message("text-danger", "exclamation-triangle",
+                                 "Couldn't verify this login. Please try logging in again.")
+                return()
+            }
+
             result <- spotify_exchange_code(
                 code = query$code,
                 client_id = SPOTIFY_CLIENT_ID,
@@ -87,23 +102,22 @@ server <- function(input, output, session) {
         # Handle OAuth error
         if (!is.null(query$error)) {
             set_auth_message("text-danger", "exclamation-triangle",
-                             paste("Spotify authorization denied:", query$error))
+                             "Spotify didn't give access, so you are not logged in.")
         }
     })
 
     # Handle login button click
     observeEvent(input$login_btn, {
-        auth_info <- spotify_authorize_url(
+        login <- oauth_state_new(SPOTIFY_CLIENT_SECRET)
+        url <- spotify_authorize_url(
             client_id = SPOTIFY_CLIENT_ID,
             redirect_uri = REDIRECT_URI,
-            scope = SPOTIFY_SCOPES
+            scope = SPOTIFY_SCOPES,
+            state = login$state
         )
 
-        # Store state for verification (optional, for added security)
-        session$userData$oauth_state <- auth_info$state
-
-        # Redirect to Spotify
-        session$sendCustomMessage("redirect", auth_info$url)
+        # The browser keeps the nonce while it is away at Spotify (www/redirect.js)
+        session$sendCustomMessage("redirect", list(url = url, nonce = login$nonce))
     })
 
     # Handle logout button click

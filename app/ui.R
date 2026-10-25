@@ -54,13 +54,6 @@ create_app_footer <- function(current_app = "") {
 
 # Function-based UI for OAuth handling
 uiFunc <- function(req) {
-    # Parse query string for OAuth callback
-    query <- parseQueryString(req$QUERY_STRING)
-
-    # Check if this is an OAuth callback
-    has_code <- !is.null(query$code)
-    has_error <- !is.null(query$error)
-
     page_navbar(
         theme = bs_theme(
             version = 5,
@@ -78,7 +71,9 @@ uiFunc <- function(req) {
         header = tagList(
             tags$head(
                 tags$link(rel = "icon", type = "image/png", href = "www/favicon.png"),
-                tags$script(src = "www/redirect.js"),
+                # Versioned by its content: a browser that kept an older copy must not run it, because
+                # the server and this script have to agree on how a login is passed on
+                tags$script(src = paste0("www/redirect.js?v=", substr(unname(tools::md5sum("www/redirect.js")), 1, 8))),
                 tags$script(src = "www/preferences.js"),
                 tags$script(src = "www/tabs.js"),
                 tags$script(src = "www/playlists-cache.js"),
@@ -144,11 +139,6 @@ uiFunc <- function(req) {
             nav_panel(
                 title = "Top Artists",
                 value = "top_artists",
-
-                # Hidden inputs to pass OAuth data to server
-                tags$input(type = "hidden", id = "oauth_code", value = if (has_code) query$code else ""),
-                tags$input(type = "hidden", id = "oauth_state", value = if (has_code) query$state else ""),
-                tags$input(type = "hidden", id = "oauth_error", value = if (has_error) query$error else ""),
 
                 layout_sidebar(
                     sidebar = sidebar(
