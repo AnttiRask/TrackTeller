@@ -114,6 +114,7 @@ server <- function(input, output, session) {
     observeEvent(input$confirm_logout, {
         removeModal()
         token_info(NULL)
+        nav_select("main_navbar", "top_artists")
         user_display_name_val("")
         set_auth_message("text-info", "info-circle", "You have been logged out.")
     })
@@ -121,6 +122,8 @@ server <- function(input, output, session) {
     # The login ended (expired or revoked): forget the token, say so on the login view
     end_session <- function() {
         token_info(NULL)
+        nav_select("main_navbar", "top_artists")
+        user_display_name_val("")
         set_auth_message("text-warning", "exclamation-triangle", "Session expired. Please log in again.")
     }
 

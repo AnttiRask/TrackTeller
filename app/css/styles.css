@@ -82,7 +82,13 @@ p {
     color: #808080 !important;
 }
 
-/* Signed in as ..., Logout: top right of the navbar */
+/* Before login only the first tab works (see www/tabs.js) */
+.signed-out .navbar .nav-link[data-value]:not([data-value="top_artists"]) {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Signed in as ..., Log out: top right of the navbar */
 .account-box {
     display: flex;
     align-items: center;

@@ -78,6 +78,7 @@ uiFunc <- function(req) {
                 tags$link(rel = "icon", type = "image/png", href = "www/favicon.png"),
                 tags$script(src = "www/redirect.js"),
                 tags$script(src = "www/preferences.js"),
+                tags$script(src = "www/tabs.js"),
                 includeCSS("css/styles.css"),
                 # Automatically display a loading screen until UI is ready
                 autoWaiter()
