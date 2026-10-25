@@ -107,3 +107,31 @@ test_that("the browser copy is capped", {
     big <- lapply(1:30, function(i) list(id = as.character(i), name = paste("p", i)))
     expect_equal(nrow(sanitise_cached_playlists(big, max_rows = 10L)), 10)
 })
+
+test_that("a browser copy that arrives as a data frame is read the same", {
+    rows <- data.frame(id = c("a", "b"), name = c("Jazz", "Blues"), owner = "Pat", track_count = c(3, 4),
+                       is_public = c(TRUE, FALSE), stringsAsFactors = FALSE)
+    rows$spotify_url <- c("https://open.spotify.com/playlist/a", NA)
+    out <- sanitise_cached_playlists(rows)
+    expect_equal(out$name, c("Jazz", "Blues"))
+    expect_equal(out$track_count, c(3L, 4L))
+    expect_equal(out$is_public, c(TRUE, FALSE))
+    expect_true(is.na(out$spotify_url[2]))
+})
+
+test_that("packing 4,000 playlists for the browser takes well under a second", {
+    big <- pl(sprintf("Playlist %04d", 1:4213))
+    expect_lt(system.time(packed <- compact_playlists(big))[["elapsed"]], 1)
+    expect_length(packed, 4213)
+    expect_equal(packed[[4213]]$name, "Playlist 4213")
+})
+
+test_that("reading a browser copy of 4,000 playlists is fast, also inside Shiny code", {
+    big <- compact_playlists(pl(sprintf("Playlist %04d", 1:4213)))
+    testServer(function(id) moduleServer(id, function(input, output, session) {}), args = list(), {
+        elapsed <- system.time(out <- sanitise_cached_playlists(big))[["elapsed"]]
+        expect_equal(nrow(out), 4213)
+        # one tibble() per row took ~20 s here; from columns it is a fraction of a second
+        expect_lt(elapsed, 1)
+    })
+})

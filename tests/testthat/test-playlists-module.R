@@ -324,3 +324,153 @@ test_that("parsing a page of playlists is fast inside Shiny code", {
         expect_lt(elapsed, 0.04)        # measured: 3 ms; the per-playlist version: 92 ms
     })
 })
+
+# ---- the copy kept in the browser ----
+
+# Stands in for the browser: remembers the messages the module sends
+message_log <- function() {
+    env <- new.env(); env$sent <- list()
+    env$send <- function(type, message) env$sent[[length(env$sent) + 1L]] <- list(type = type, message = message)
+    env$of_type <- function(type) Filter(function(m) m$type == type, env$sent)
+    env
+}
+
+# What the browser sends back: a list of rows, as Shiny delivers a JSON array of objects
+browser_copy <- function(names, ids = paste0("old", seq_along(names))) {
+    list(saved_at = "2026-10-24T10:00:00Z", items = lapply(seq_along(names), function(i) list(
+        id = ids[i], name = names[i], owner = "Pat", track_count = i, is_public = TRUE,
+        spotify_url = paste0("https://open.spotify.com/playlist/", ids[i]))))
+}
+
+copy_args <- function(api, log, user = "u1", ...) {
+    c(args_for(api, ...), list(user_id = reactiveVal(user), send_message = log$send))
+}
+
+test_that("the copy is asked for once per login, under the account's name, as soon as it is known", {
+    api <- fake_spotify(120); log <- message_log()
+    testServer(playlists_server, args = copy_args(api, log), {
+        session$flushReact()
+        asked <- log$of_type("playlist_cache_load")
+        expect_length(asked, 1)
+        expect_equal(asked[[1]]$message$key, "trackteller.playlists.u1")
+        expect_match(asked[[1]]$message$input_id, "cache$")
+        turn(session, 0.05)
+        expect_length(log$of_type("playlist_cache_load"), 1)    # not again
+    })
+
+    # not before it is known whose it is
+    api <- fake_spotify(120); log <- message_log()
+    testServer(playlists_server, args = c(args_for(api), list(user_id = reactiveVal(NULL), send_message = log$send)), {
+        session$flushReact(); turn(session, 0.05)
+        expect_length(log$of_type("playlist_cache_load"), 0)
+    })
+})
+
+test_that("a saved copy is on screen at once, A-Z, with the letters, while the real list loads", {
+    api <- fake_spotify(1000); log <- message_log()
+    testServer(playlists_server, args = copy_args(api, log), {
+        session$flushReact()
+        session$setInputs(cache = browser_copy(c("zebra", "Äiti", "Apple", "99 songs", "banana")))
+        session$flushReact()
+
+        expect_true(cache_present())
+        expect_equal(status(), "loading")                       # the real list is on its way
+        expect_equal(all_data()$name, c("99 songs", "Apple", "banana", "zebra", "Äiti"))
+        expect_true(sorted_view())                                 # the letter filter works already
+        expect_equal(unname(playlist_letter_choices(all_data()$name)), c("all", "#", "A", "B", "Z", "Ä"))
+        # the pager and the note follow the copy, not the 1,000 that are still arriving
+        expect_equal(shown_total(), 5L)
+        session$setInputs(letter = "A")
+        expect_equal(filtered()$name, "Apple")
+
+        # more of the real list arriving does not change what is on screen
+        turn(session, 0.05); turn(session, 0.05)
+        expect_gt(loaded(), 50L)
+        expect_equal(nrow(all_data()), 5)
+    })
+})
+
+test_that("when the real list is complete it replaces the copy, and a new copy is saved", {
+    api <- fake_spotify(120); log <- message_log()
+    testServer(playlists_server, args = copy_args(api, log), {
+        session$flushReact()
+        session$setInputs(cache = browser_copy(c("old one", "old two")))
+        session$flushReact()
+        expect_equal(nrow(all_data()), 2)
+
+        finish_loading(session, status)
+        expect_equal(status(), "done")
+        expect_false(cache_present())
+        expect_equal(nrow(all_data()), 120)
+        expect_false(any(startsWith(all_data()$id, "old")))
+
+        saved <- log$of_type("playlist_cache_save")
+        expect_length(saved, 1)
+        expect_equal(saved[[1]]$message$key, "trackteller.playlists.u1")
+        expect_length(saved[[1]]$message$items, 120)
+        expect_match(saved[[1]]$message$saved_at, "^\\d{4}-\\d{2}-\\d{2}T")
+        expect_setequal(names(saved[[1]]$message$items[[1]]),
+                        c("id", "name", "owner", "track_count", "is_public", "spotify_url"))   # image_url is missing in this data
+    })
+})
+
+test_that("without a copy, a finished load is saved too", {
+    api <- fake_spotify(120); log <- message_log()
+    testServer(playlists_server, args = copy_args(api, log), {
+        finish_loading(session, status)
+        expect_length(log$of_type("playlist_cache_save"), 1)
+    })
+})
+
+test_that("nothing is saved when the load failed, or when it is not known whose list it is", {
+    api <- fake_spotify(120, fail_at = 50); log <- message_log()
+    testServer(playlists_server, args = copy_args(api, log), {
+        finish_loading(session, status)
+        expect_equal(status(), "failed")
+        expect_length(log$of_type("playlist_cache_save"), 0)
+    })
+    api <- fake_spotify(120); log <- message_log()
+    testServer(playlists_server, args = c(args_for(api), list(user_id = reactiveVal(NULL), send_message = log$send)), {
+        finish_loading(session, status)
+        expect_equal(status(), "done")
+        expect_length(log$of_type("playlist_cache_save"), 0)
+    })
+})
+
+test_that("an empty, damaged or late copy is ignored", {
+    api <- fake_spotify(120); log <- message_log()
+    testServer(playlists_server, args = copy_args(api, log), {
+        session$flushReact()
+        session$setInputs(cache = list(items = list()))                     # nothing saved
+        expect_false(cache_present())
+        session$setInputs(cache = list(items = list("rubbish", 42, NULL)))   # damaged
+        expect_false(cache_present())
+        finish_loading(session, status)
+        session$setInputs(cache = browser_copy(c("late one")))               # after the real list: no use
+        session$flushReact()
+        expect_false(cache_present())
+        expect_equal(nrow(all_data()), 120)
+    })
+})
+
+test_that("logging out empties the copy in memory and in the browser, and the next login asks again", {
+    api <- fake_spotify(120); log <- message_log()
+    auth <- reactiveVal(TRUE)
+    testServer(playlists_server, args = c(list(api_get = api$get, is_authenticated = auth, tab_active = reactiveVal(TRUE),
+                                               pause_ms = 10, user_id = reactiveVal("u1"), send_message = log$send)), {
+        session$flushReact()
+        session$setInputs(cache = browser_copy(c("a", "b")))
+        session$flushReact()
+        expect_true(cache_present())
+
+        auth(FALSE); session$flushReact()
+        expect_false(cache_present())
+        expect_null(all_data())
+        cleared <- log$of_type("playlist_cache_clear")
+        expect_length(cleared, 1)
+        expect_equal(cleared[[1]]$message$prefix, "trackteller.playlists.")
+
+        auth(TRUE); session$flushReact()
+        expect_length(log$of_type("playlist_cache_load"), 2)
+    })
+})

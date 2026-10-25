@@ -81,6 +81,7 @@ uiFunc <- function(req) {
                 tags$script(src = "www/redirect.js"),
                 tags$script(src = "www/preferences.js"),
                 tags$script(src = "www/tabs.js"),
+                tags$script(src = "www/playlists-cache.js"),
                 includeCSS("css/styles.css"),
                 # Automatically display a loading screen until UI is ready
                 autoWaiter()

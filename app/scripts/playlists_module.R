@@ -107,10 +107,14 @@ playlists_ui <- function(id) {
 # is_authenticated: reactive, TRUE while somebody is logged in
 # tab_active:       reactive, TRUE while the My Playlists tab is open
 # user_id:          reactive, the Spotify user id (NULL until known); names the browser copy
+# send_message:     function(type, message), by default the session's sendCustomMessage;
+#                   only the tests pass another
 playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id = reactive(NULL),
-                             page_size = PLAYLIST_PAGE_SIZE, batch_size = 50L, pause_ms = 100) {
+                             page_size = PLAYLIST_PAGE_SIZE, batch_size = 50L, pause_ms = 100,
+                             send_message = NULL) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
+        send <- send_message %||% function(type, message) session$sendCustomMessage(type, message)
 
         # Not reactive: the playlists as they arrive (in Spotify's order), and what is shown
         fetched <- new.env()
@@ -125,6 +129,12 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         reset_data()
         session$onSessionEnded(function() fetched$run <- fetched$run + 1L)
 
+        # A copy saved in the browser (sorted A-Z), shown at once while the real list loads
+        cached <- new.env()
+        cached$data <- NULL
+        cache_present <- reactiveVal(FALSE)
+        cache_requested <- reactiveVal(FALSE)  # once per login
+
         status <- reactiveVal("idle")          # idle | loading | done | failed
         loaded <- reactiveVal(0L)              # how many have arrived
         total <- reactiveVal(NA_integer_)      # how many there are, once Spotify has said
@@ -138,22 +148,25 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
             data <- fetched$data
             if (isolate(status()) == "done" && !is.null(data)) {
                 data <- playlist_sort(data)
+            } else if (!is.null(cached$data)) {
+                data <- cached$data
             }
             shown$data <- data
             bump()
         }
 
-        sorted_view <- reactive(status() == "done")
+        # A-Z order and the letter filter: when everything is here, or from the saved copy
+        sorted_view <- reactive(status() == "done" || cache_present())
 
         # How many playlists can be paged through: while loading, what has arrived so far
         # (the list on screen is only redrawn when it has to be)
         available <- reactive({
-            if (status() == "loading") loaded() else nrow(filtered())
+            if (status() == "loading" && !cache_present()) loaded() else nrow(filtered())
         })
 
         # The count to show in text: while loading, how many there will be
         shown_total <- reactive({
-            if (status() == "loading" && !is.na(total())) total() else nrow(filtered())
+            if (status() == "loading" && !cache_present() && !is.na(total())) total() else nrow(filtered())
         })
 
         all_data <- reactive({
@@ -201,12 +214,19 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
                         # A playlist added while we were loading shifts the pages: keep each once
                         fetched$data <- dplyr::distinct(fetched$data, id, .keep_all = TRUE)
                         loaded(nrow(fetched$data))
+                        had_copy <- !is.null(cached$data)
                         status("done")
-                        page(1L)
+                        cached$data <- NULL
+                        cache_present(FALSE)
+                        # From Spotify's order to A-Z moves things, so start again at the top;
+                        # from a saved copy (already A-Z) the page stays where it is
+                        if (!had_copy) page(1L)
                         refresh_shown()
+                        save_copy()
                     } else {
                         # The page being looked at changes only while it is not yet full
-                        if (nrow(fetched$data) <= isolate(page()) * page_size) refresh_shown()
+                        # (never, with a saved copy on screen)
+                        if (is.null(cached$data) && nrow(fetched$data) <= isolate(page()) * page_size) refresh_shown()
                         pause <- promises::promise(function(resolve, reject) {
                             later::later(function() resolve(NULL), pause_ms / 1000)
                         })
@@ -231,7 +251,7 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
             total(NA_integer_)
             page(1L)
             status("loading")
-            bump()
+            refresh_shown()
             load_next(fetched$run)
         }
 
@@ -242,6 +262,42 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         })
 
         observeEvent(input$retry, start_loading())
+
+        # ---- the copy kept in the browser ----
+
+        cache_key <- reactive({
+            id <- user_id()
+            if (is.null(id) || !nzchar(id)) NULL else paste0(PLAYLIST_CACHE_PREFIX, id)
+        })
+
+        # Ask for it once per login, as soon as we know whose it is
+        observeEvent(list(cache_key(), is_authenticated()), {
+            key <- cache_key()
+            if (!is.null(key) && isTRUE(is_authenticated()) && !cache_requested()) {
+                cache_requested(TRUE)
+                send("playlist_cache_load", list(key = key, input_id = ns("cache")))
+            }
+        })
+
+        observeEvent(input$cache, {
+            if (status() == "done" || !isTRUE(is_authenticated())) return()
+            data <- sanitise_cached_playlists(input$cache$items)
+            if (is.null(data)) return()
+            cached$data <- playlist_sort(data)
+            cache_present(TRUE)
+            refresh_shown()
+        })
+
+        # Keep the complete list for next time
+        save_copy <- function() {
+            key <- isolate(cache_key())
+            if (is.null(key) || is.null(shown$data)) return(invisible(NULL))
+            send("playlist_cache_save", list(
+                key = key,
+                saved_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+                items = compact_playlists(shown$data)
+            ))
+        }
 
         # ---- the letter filter (needs everything, so only when loading is done) ----
 
@@ -262,14 +318,19 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         # While loading, the list on screen is only redrawn when the page being looked at
         # changes; a new page gets what has arrived by now
         observeEvent(page(), {
-            if (status() == "loading") refresh_shown()
+            if (status() == "loading" && !cache_present()) refresh_shown()
         }, ignoreInit = TRUE)
 
         output$sidebar_note <- renderUI({
-            if (status() %in% c("loading", "failed")) {
+            tagList(
+                if (status() %in% c("loading", "failed") && !cache_present()) {
+                    tags$p(class = "text-muted small",
+                           "The letters and A–Z order appear when all your playlists have loaded.")
+                },
                 tags$p(class = "text-muted small",
-                       "The letters and A–Z order appear when all your playlists have loaded.")
-            }
+                       "A copy of your playlist list is kept in this browser, so that it opens faster ",
+                       "next time. Logging out removes it.")
+            )
         })
 
         # ---- paging ----
@@ -320,7 +381,8 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
                     class = "playlist-banner",
                     tags$div(class = "playlist-spinner"),
                     tags$span(
-                        "Loading your playlists… ",
+                        if (cache_present()) "Showing the copy saved in this browser while your playlists refresh… "
+                        else "Loading your playlists… ",
                         format(loaded(), big.mark = ","),
                         if (!is.na(total())) paste0(" of ", format(total(), big.mark = ","))
                     )
@@ -368,11 +430,15 @@ playlists_server <- function(id, api_get, is_authenticated, tab_active, user_id 
         observeEvent(is_authenticated(), {
             if (!isTRUE(is_authenticated())) {
                 reset_data()
+                cached$data <- NULL
+                cache_present(FALSE)
+                cache_requested(FALSE)
                 status("idle")
                 loaded(0L)
                 total(NA_integer_)
                 page(1L)
                 bump()
+                send("playlist_cache_clear", list(prefix = PLAYLIST_CACHE_PREFIX))
             }
         }, ignoreInit = TRUE)
     })
