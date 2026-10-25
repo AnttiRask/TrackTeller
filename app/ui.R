@@ -12,6 +12,7 @@ source("scripts/config.R", local = TRUE)
 source("scripts/spotify_oauth.R", local = TRUE)
 source("scripts/spotify_api.R", local = TRUE)
 source("scripts/display.R", local = TRUE)
+source("scripts/charts.R", local = TRUE)
 
 # Shared footer component for cross-linking between apps
 create_app_footer <- function(current_app = "") {
@@ -104,6 +105,7 @@ uiFunc <- function(req) {
                         max = COUNT_MAX,
                         value = COUNT_DEFAULT,
                         step = COUNT_STEP,
+                        ticks = FALSE,
                         width = "260px"
                     ),
                     p(class = "text-muted small shared-controls-note",
@@ -164,13 +166,24 @@ uiFunc <- function(req) {
                             h3("Your Top Artists"),
                             br(),
                             p("Ranked by how much you listen to them."),
+                            div(
+                                class = "d-grid gap-2 sidebar-actions",
+                                downloadButton("download_artists_card", "Share Top Artists",
+                                             icon = icon("share-nodes"),
+                                             class = "btn-success",
+                                             style = "color: #000;"),
+                                actionButton("create_playlist_artists", "Create Playlist from Top Artists",
+                                           class = "btn-success", icon = icon("music"))
+                            ),
                             br(),
                             hr(),
                             textOutput("user_display_name"),
                             br(),
                             actionButton("logout_btn", "Logout",
                                        class = "btn-outline-secondary btn-sm")
-                        )
+                        ),
+
+                        create_app_footer("trackteller")
                     ),
                     # Show welcome message when not authenticated
                     conditionalPanel(
@@ -203,15 +216,6 @@ uiFunc <- function(req) {
                     # Show artist list when authenticated
                     conditionalPanel(
                         condition = "output.is_authenticated == true",
-                        div(
-                            style = "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;",
-                            downloadButton("download_artists_card", "Share Top Artists",
-                                         icon = icon("share-nodes"),
-                                         class = "btn-success",
-                                         style = "color: #000;"),
-                            actionButton("create_playlist_artists", "Create Playlist from Top Artists",
-                                       class = "btn-success", icon = icon("music"))
-                        ),
                         uiOutput("top_artists_note"),
                         uiOutput("top_artists_list"),
                         div(style = "height: 40px;")
@@ -228,16 +232,17 @@ uiFunc <- function(req) {
                         width = 350,
                         h3("Your Top Tracks"),
                         br(),
-                        p("Your most played tracks, ranked by listening frequency.")
-                    ),
-                    div(
-                        style = "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;",
-                        downloadButton("download_tracks_card", "Share Top Tracks",
-                                     icon = icon("share-nodes"),
-                                     class = "btn-success",
-                                     style = "color: #000;"),
-                        actionButton("create_playlist_tracks", "Create Playlist from Top Tracks",
-                                   class = "btn-success", icon = icon("music"))
+                        p("Your most played tracks, ranked by listening frequency."),
+                        div(
+                            class = "d-grid gap-2 sidebar-actions",
+                            downloadButton("download_tracks_card", "Share Top Tracks",
+                                         icon = icon("share-nodes"),
+                                         class = "btn-success",
+                                         style = "color: #000;"),
+                            actionButton("create_playlist_tracks", "Create Playlist from Top Tracks",
+                                       class = "btn-success", icon = icon("music"))
+                        ),
+                        create_app_footer("trackteller")
                     ),
                     uiOutput("top_tracks_note"),
                     uiOutput("top_tracks_list"),
@@ -254,12 +259,13 @@ uiFunc <- function(req) {
                         width = 350,
                         h3("Recently Played"),
                         br(),
-                        p("Your most recently played tracks.")
-                    ),
-                    div(
-                        style = "margin-bottom: 16px;",
-                        actionButton("create_playlist_recent", "Create Playlist from Recently Played",
-                                   class = "btn-success", icon = icon("music"))
+                        p("Your most recently played tracks."),
+                        div(
+                            class = "d-grid gap-2 sidebar-actions",
+                            actionButton("create_playlist_recent", "Create Playlist from Recently Played",
+                                       class = "btn-success", icon = icon("music"))
+                        ),
+                        create_app_footer("trackteller")
                     ),
                     uiOutput("recently_played_note"),
                     uiOutput("recently_played_list"),
@@ -276,10 +282,11 @@ uiFunc <- function(req) {
                         width = 350,
                         h3("Your Top Genres"),
                         br(),
-                        p("Genre distribution across your top artists.")
+                        p("Genre distribution across your top artists."),
+                        create_app_footer("trackteller")
                     ),
                     uiOutput("genre_note"),
-                    plotlyOutput("genre_plot", height = 700),
+                    uiOutput("genre_plot_ui"),
                     div(style = "height: 40px;")
                 )
             ),
@@ -300,14 +307,12 @@ uiFunc <- function(req) {
                             "Filter by first letter:",
                             choices = c("Loading..." = ""),
                             selected = ""
-                        )
+                        ),
+                        create_app_footer("trackteller")
                     ),
                     uiOutput("user_playlists_list"),
                     div(style = "height: 40px;")
                 )
-            ),
-
-        # Add footer with cross-linking
-        footer = create_app_footer("trackteller")
+            )
     )
 }

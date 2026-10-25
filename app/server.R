@@ -540,6 +540,15 @@ server <- function(input, output, session) {
         if (!is.null(note)) tags$p(class = "list-note", note)
     })
 
+    # The chart sits in a plain container whose height follows the number of bars. Placed
+    # directly in the page's fill layout the plot would be squeezed into whatever height
+    # is left (and 20 bars need room for their labels).
+    output$genre_plot_ui <- renderUI({
+        data <- quiet(genre_data())
+        n <- if (is.null(data)) 0L else displayed_count(shown_count(), nrow(data), cap = GENRE_CHART_MAX)
+        plotlyOutput("genre_plot", height = paste0(genre_chart_height(n), "px"))
+    })
+
     # Genre distribution plot - green bars, title case
     output$genre_plot <- renderPlotly({
         req(genre_data())
@@ -549,38 +558,7 @@ server <- function(input, output, session) {
 
         # Take the top N genres (never more than the chart can show)
         top_count <- displayed_count(shown_count(), nrow(data), cap = GENRE_CHART_MAX)
-        data <- head(data, top_count)
-
-        # Create horizontal bar chart with green color
-        plot <- data %>%
-            mutate(genre_display = factor(genre_display, levels = rev(genre_display))) %>%
-            ggplot(aes(x = genre_display, y = count,
-                      text = paste0(genre_display, "\n",
-                                   "Artists: ", count, "\n",
-                                   "Percentage: ", percentage, "%\n",
-                                   artist_names))) +
-            geom_col(fill = spotify_colors$dark_green, alpha = 0.8, width = 0.7) +
-            coord_flip() +
-            labs(
-                title = paste("Your Top", top_count, "Genres"),
-                x = NULL,
-                y = "Number of Artists"
-            ) +
-            scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-            theme_spotify() +
-            theme(
-                panel.grid.major.x = element_line(
-                    color = spotify_colors$white,
-                    linewidth = 0.4,
-                    linetype = 2
-                ),
-                panel.grid.major.y = element_blank()
-            )
-
-        ggplotly(plot, tooltip = "text") %>%
-            plotly::layout(
-                hoverlabel = list(bgcolor = spotify_colors$black)
-            )
+        genre_chart(head(data, top_count))
     })
 
     # ============================================

@@ -271,3 +271,21 @@ Decided by the owner on 2026-10-25, in this order of discussion:
 4. **Remembered across reloads:** both choices are kept in the browser (`localStorage`, per device, wrapped in try/catch so the app works without storage) and restored on load. They are only these two preferences; nothing about the account or listening. The Spotify login is not remembered (decision 2a).
 5. **Playlists private by default** with a "Make it public" checkbox in the Create Playlist dialog (decision 3); the result dialog says which.
 6. **FillariStatus in the footer** (decision 8); the project page `docs/index.html` gets the same link.
+
+### Layout decisions after trying the UX build (2026-10-25)
+1. **Cross-app links and the action buttons move into the sidebars** (as in BiblioStatus, where `create_app_footer()` is the last element of `sidebar()`), because the shared bar left the main area too short. The Share and Create Playlist buttons sit at the top of the sidebar of their tab; the page-level footer is gone.
+2. **The genre chart gets a height that follows the number of bars** (`genre_chart_height()`, 32 px per bar + 130). Placed directly in bslib's fill layout the plot was squeezed to whatever height was left (340 px in a 600 px-tall window, about 250 px on the owner's screen), and 20 labels overlapped. It now sits in a plain container, so the page scrolls instead. The chart itself is `genre_chart()` in `app/scripts/charts.R`, with tests (including the white-panel regression).
+3. The slider's tick labels are off, to save a little height in the bar.
+
+### To think about: My Playlists takes a long time to load (raised by the owner, 2026-10-25)
+Not designed or decided; this is the list of ideas to weigh, and a first step.
+- **What happens now:** the tab loads 50 playlists per request, one request at a time (Spotify's maximum page is 50, and `/me/playlists` has no filter or search), pauses 100 ms between requests, and after every batch re-sorts everything, rebuilds the letter list and re-renders the visible list. With hundreds of playlists that is many sequential round trips plus a lot of repeated work.
+- **Step 0, measure before changing anything:** log the time of each request and of each re-render for an account with many playlists, to see whether the time goes to waiting on Spotify (round trips) or to our own work (re-sorting and re-rendering growing lists). The right fix depends on that.
+- **Ideas, roughly in order of value for effort:**
+  1. *Fetch the rest in parallel.* The first page says how many playlists there are (`total`), so all other offsets are known; request them several at a time with `httr2::req_perform_parallel()` (a handful at once, to stay well inside Spotify's rate limits, with the existing retry and 429 handling). Likely cuts the time several-fold if round trips dominate.
+  2. *Do less work per batch.* Update the letter list and the visible list only when loading is done or every few batches, not after each one; keep the batches in a list and bind once.
+  3. *Start earlier.* Begin loading right after login (in the background) instead of when the tab is opened, so it is often ready by the time it is needed. Costs API calls for people who never open the tab.
+  4. *Remember in the browser.* Keep a compact copy (id, name, owner, track count) in `localStorage`, show it immediately, and refresh in the background. Needs a decision: it stores playlist names on the device, and must be keyed to the account and cleared on logout.
+  5. *Render less.* A letter such as "S" can hold many cards; page the list or render only the first N and add "show more".
+  6. *Show progress honestly.* "Loaded 350 of 812" (the total is known after the first request) instead of "so far".
+- **Not possible:** filtering by first letter on Spotify's side (no such parameter), or asking for fewer fields (`fields` is not supported on this endpoint).
