@@ -15,9 +15,21 @@ fetch_card_image <- function(url, size = STATS_CARD$image_size) {
     })
 }
 
-# Truncate a string to max_chars with ".." suffix if needed
+# The font for a text. ImageMagick uses one font for a whole text and doesn't fall back
+# per character, so a text with any Chinese, Japanese or Korean in it is set in the CJK
+# font (which has the Latin letters too); everything else keeps the card's own font.
+card_font <- function(text) {
+    cjk <- "[\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}\\x{3000}-\\x{303F}\\x{FF00}-\\x{FFEF}]"
+    if (isTRUE(stringr::str_detect(text, cjk))) STATS_CARD$font_cjk else STATS_CARD$font
+}
+
+# Truncate a string to max_chars with ".." suffix if needed. max_chars counts widths, not
+# characters: a Chinese, Japanese or Korean character is as wide as two letters.
 trunc_str <- function(s, max_chars = 32) {
-    if (nchar(s) > max_chars) paste0(substr(s, 1, max_chars - 2), "..") else s
+    if (stringi::stri_width(s) <= max_chars) return(s)
+    chars <- strsplit(s, "")[[1]]
+    keep <- cumsum(stringi::stri_width(chars)) <= max_chars - 2
+    paste0(paste(chars[keep], collapse = ""), "..")
 }
 
 # Build a 1200x630 stats card using magick
@@ -35,11 +47,11 @@ build_stats_card <- function(data, username, time_label, type) {
     }
 
     img <- image_annotate(img, title_text,
-        size = 38, color = "#1DB954", font = "Liberation Sans",
+        size = 38, color = "#1DB954", font = card_font(title_text),
         weight = 700, gravity = "NorthWest", location = "+40+18"
     )
     img <- image_annotate(img, time_label,
-        size = 22, color = "#b3b3b3", font = "Liberation Sans",
+        size = 22, color = "#b3b3b3", font = STATS_CARD$font,
         gravity = "NorthWest", location = "+40+65"
     )
 
@@ -83,32 +95,32 @@ build_stats_card <- function(data, username, time_label, type) {
         if (type == "artists") {
             # Single text line: rank + name
             img <- image_annotate(img, paste0("#", i),
-                size = 18L, color = "#1DB954", font = "Liberation Sans",
+                size = 18L, color = "#1DB954", font = STATS_CARD$font,
                 weight = 700L, gravity = "NorthWest",
                 location = paste0("+", x_txt, "+", y_base + 30L)
             )
             name <- trunc_str(top10$name[i], 30L)
             img <- image_annotate(img, name,
-                size = 22L, color = "#FFFFFF", font = "Liberation Sans",
+                size = 22L, color = "#FFFFFF", font = card_font(name),
                 gravity = "NorthWest",
                 location = paste0("+", x_txt + 48L, "+", y_base + 28L)
             )
         } else {
             # Two text lines: rank + track name, then artist
             img <- image_annotate(img, paste0("#", i),
-                size = 18L, color = "#1DB954", font = "Liberation Sans",
+                size = 18L, color = "#1DB954", font = STATS_CARD$font,
                 weight = 700L, gravity = "NorthWest",
                 location = paste0("+", x_txt, "+", y_base + 22L)
             )
             tname <- trunc_str(top10$name[i], 26L)
             img <- image_annotate(img, tname,
-                size = 20L, color = "#FFFFFF", font = "Liberation Sans",
+                size = 20L, color = "#FFFFFF", font = card_font(tname),
                 gravity = "NorthWest",
                 location = paste0("+", x_txt + 48L, "+", y_base + 18L)
             )
             aname <- trunc_str(top10$artist[i], 26L)
             img <- image_annotate(img, aname,
-                size = 17L, color = "#b3b3b3", font = "Liberation Sans",
+                size = 17L, color = "#b3b3b3", font = card_font(aname),
                 gravity = "NorthWest",
                 location = paste0("+", x_txt + 48L, "+", y_base + 46L)
             )
@@ -117,7 +129,7 @@ build_stats_card <- function(data, username, time_label, type) {
 
     # ---- Footer ----
     img <- image_annotate(img, "trackteller.youcanbeapirate.com",
-        size = 18L, color = "#555555", font = "Liberation Sans",
+        size = 18L, color = "#555555", font = STATS_CARD$font,
         gravity = "South", location = "+0+18"
     )
 
