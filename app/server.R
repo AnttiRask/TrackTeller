@@ -106,6 +106,9 @@ server <- function(input, output, session) {
         }
     })
 
+    # Logged out in this session: Spotify would sign the same account straight back in
+    after_logout <- reactiveVal(FALSE)
+
     # Handle login button click
     observeEvent(input$login_btn, {
         login <- oauth_state_new(SPOTIFY_CLIENT_SECRET)
@@ -113,7 +116,8 @@ server <- function(input, output, session) {
             client_id = SPOTIFY_CLIENT_ID,
             redirect_uri = REDIRECT_URI,
             scope = SPOTIFY_SCOPES,
-            state = login$state
+            state = login$state,
+            force_dialog = isolate(after_logout())
         )
 
         # The browser keeps the nonce while it is away at Spotify (www/redirect.js)
@@ -129,6 +133,7 @@ server <- function(input, output, session) {
     observeEvent(input$confirm_logout, {
         removeModal()
         token_info(NULL)
+        after_logout(TRUE)      # the next login asks which account again
         nav_select("main_navbar", "top_artists")
         user_display_name_val("")
         user_id_val(NULL)
