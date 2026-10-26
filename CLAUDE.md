@@ -77,6 +77,10 @@ CI runs the same script (`tests.yml`). httr2's mocks skip its retry loop, so the
 - `APP_URL` in `.env` is for local dev; `deploy.sh` hardcodes production URL
 - `docs/index.html` is a static GitHub Pages landing page (not part of the Shiny app)
 
+## Where things stand
+
+The 2026 refactor is built and live; what is still open (security headers and `/health`, a safer `deploy.sh`, idempotent playlist creation, parallel card images, cloud housekeeping) is listed in section 11 of `trackteller-refactor-plan.md`, with the reasons. None of it is approved until the user says so. Deploying and running the cloud setup are described in `DEPLOY.md`.
+
 ## R Coding Conventions
 
 - Use Tidyverse syntax and packages (dplyr, purrr, stringr, tidyr, ggplot2)
