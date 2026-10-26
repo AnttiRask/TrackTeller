@@ -1,8 +1,8 @@
-# TrackTeller — Refactor Plan (proposal, nothing approved or built yet)
+# TrackTeller — Refactor Plan (decisions made, most of it built; status in section 11)
 
 > Bring TrackTeller in line with what FillariStatus, Gallery of the Day, TuneTeller and BiblioStatus now do (`fillaristatus-plan.md`, `gallery-of-the-day-refactor-plan.md`, `tuneteller-refactor-plan.md`, `bibliostatus-refactor-plan.md`): an API layer that never throws, explicit states, tests with mocked HTTP, security headers, keyless CI/CD that gates deploys on tests, and a least-privilege runtime.
 >
-> **For Claude Code:** this is a proposal. **Nothing here is approved until the user says so, item by item** (section 9). Every change is checked with the user before it is committed, pushed or deployed. Cloud resources and GitHub settings need explicit approval. Never print secrets.
+> **For Claude Code:** sections 0-8 are the original proposal and are kept as written (they explain the *why*); section 9 holds the decisions the user made, section 10 the progress and findings as work went on, and **section 11 the current status: what is built and what is still open**. Open items are **not approved until the user says so, item by item**. Every change is checked with the user before it is committed, pushed or deployed. Cloud resources and GitHub settings need explicit approval. Never print secrets.
 
 *Written 2026-10-24 from the four sibling plans, the TrackTeller code at `e90dd0b` (local `main` equals `origin/main`), a read-only look at Cloud Run / Artifact Registry / GitHub settings, and one web search on Spotify's API changes. "(code)" = read in the files; "(live)" = read from Google Cloud or GitHub today; "(verify)" = suspected, to be proved before relying on it.*
 
@@ -229,8 +229,8 @@ Verification after each push/deploy follows the user's rules: `git status` and `
 | # | Question | Proposed |
 |---|---|---|
 | 1 | Run the Phase 0 API probe first (you log in / give me a token in an env var, I print only status codes)? | Yes — **DONE 2026-10-24**, see 1.1 |
-| 2 | Session loss on reload/reconnect: (a) re-login with no consent screen, (b) refresh token in the browser, (c) PKCE | (a) — **DECIDED by the user 2026-10-24: (a)** |
-| 3 | Playlists private by default with a "make public" checkbox? | Yes — **DECIDED by the user 2026-10-24** |
+| 2 | Session loss on reload/reconnect: (a) re-login with no consent screen, (b) refresh token in the browser, (c) PKCE | (a) — **DECIDED by the user 2026-10-24: (a); built 2026-10-26** |
+| 3 | Playlists private by default with a "make public" checkbox? | Yes — **DECIDED by the user 2026-10-24; SUPERSEDED 2026-10-25**: Spotify's API can't make private playlists for this app (probed), so playlists are always public and the dialogs say so |
 | 4 | One shared time range instead of three synced selects? | Yes — **DECIDED by the user 2026-10-24** (bar above the tabs, hidden on Recently Played; "number to show" keeps resetting to 20) |
 | 5 | Move the app into `app/` and use an allowlist Docker image like the siblings? | Yes — **DECIDED by the user 2026-10-24** (own mechanical `git mv` commit, no behaviour change) |
 | 6 | Switch `httr` → `httr2`? | Yes — **DECIDED by the user 2026-10-24** (done together with the new API layer) |
@@ -239,7 +239,7 @@ Verification after each push/deploy follows the user's rules: `git status` and `
 | 9 | Phase 2 (runtime account, keyless deploy, CI with tests gating, `--max-instances 3`, timeout 3600 + affinity)? | Yes, step by step with your approval each time — **DECIDED by the user 2026-10-24** |
 | 10 | Repo hygiene settings and registry cleanup first, as a separate small step? | Yes — **DECIDED by the user 2026-10-24** (each command shown before it runs) |
 | 11 | Light mode (Phase 3)? | Not now — **DECIDED by the user 2026-10-24** (stays an optional Phase 3 item) |
-| 12 | The stray `themealot-app` service in the `trackteller-app` project: leave it, or look into it? | Read-only checks done 2026-10-24: created 2026-03-07 by you via `gcloud run deploy --source`; ready, public (`allUsers` invoker), runs as the default compute account; domain mapping `themealot.youcanbeapirate.com` exists but is **not ready**; **no requests in 30 days**. Nothing changed. Also found: the project has two pairs of secrets (`SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET` used by `deploy.sh`, and lowercase `spotify-client-id`/`spotify-client-secret`); which pair the live service reads is still to be checked before Phase 2 step 1. What to do with `themealot-app` is **open (user's call)** |
+| 12 | The stray `themealot-app` service in the `trackteller-app` project: leave it, or look into it? | Read-only checks done 2026-10-24: created 2026-03-07 by you via `gcloud run deploy --source`; ready, public (`allUsers` invoker), runs as the default compute account; domain mapping `themealot.youcanbeapirate.com` exists but is **not ready**; **no requests in 30 days**. Nothing changed. Also found: the project has two pairs of secrets (`SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET` used by `deploy.sh`, and lowercase `spotify-client-id`/`spotify-client-secret`); which pair the live service reads is still to be checked before Phase 2 step 1. What to do with `themealot-app` was the user's call: **deleted 2026-10-26** (service and its failed domain mapping; its three old images are left to the registry cleanup) |
 
 ---
 
@@ -255,13 +255,18 @@ Verification after each push/deploy follows the user's rules: `git status` and `
 | New image: `rocker/r-ver:4.5.2`, non-root, lock regenerated by `infra/regenerate_renv_lock.sh`; `theme_spotify()` panel border fix for ggplot2 4 | PR #4 |
 | `httr2` API layer, OAuth on `httr2`, testthat suite run inside the production image in CI | PR #5 (revision 00046) |
 
-### Still open
-- Registry cleanup policy is in dry-run mode; read the result, then the owner applies it for real.
-- `themealot-app` in this project: read-only checks say it is an unused duplicate (no requests in 60 days, its domain mapping never worked, `themealot.youcanbeapirate.com` is served from somewhere else). The owner decides; deleting is not reversible.
-- OAuth `state` check, private-by-default and the secure random value (decision 7); re-login without the consent screen (decision 2a).
-- Splitting `server.R` into files, `variables.R`, `strings.R`, the card helper (section 2.1).
-- Non-Latin names are blank on the share cards (Liberation Sans has no CJK glyphs); a CJK font would fix it.
-- `server.R` has no automated tests; `shiny::testServer()` tests are the next step for it.
+### Done and live, later (2026-10-25 to 2026-10-27)
+| What | Where |
+|---|---|
+| Other tabs locked before login; always back to Top Artists when the login ends | PR #8 |
+| My Playlists: all playlists, 50 to a page, loaded in the background, browser copy, Reload, honest count | PR #9 |
+| OAuth `state` check (signed, 10 minutes, bound to the browser) | PR #10 |
+| Re-login without the consent screen (`force_dialog` only after a Log out) | PR #11 |
+| `server.R` split into `app/server/*.R`, `setup.R`, `strings.R`, `variables.R`, `list_card()`, server tests | PR #12 |
+| CJK font for the share cards (`fonts-noto-cjk`) | PR #13 |
+| `themealot-app` deleted (2026-10-26); registry cleanup policy applied (dry run switched off 2026-10-27) | by hand |
+
+The former "Still open" list of this section is superseded by section 11.
 
 ### The UX pull request (decisions 3, 4, 8 and what follows from them)
 Decided by the owner on 2026-10-25, in this order of discussion:
@@ -317,3 +322,36 @@ Not designed or decided; this is the list of ideas to weigh, and a first step.
 
 ### CJK font for the share cards (2026-10-26)
 `fonts-noto-cjk` in the image (+91 MB installed, image 2.64 GB in total); `card_font()` chooses it per text, `trunc_str()` counts widths. Checked by rendering sample cards (Japanese, Chinese, Korean, Cyrillic, accented Latin) and by a test that two different CJK names don't render alike (missing glyphs would be identical boxes). Not covered: Arabic, Thai, Devanagari, emoji (boxes). `themealot-app` (service and its failed domain mapping) deleted the same day; its three old images are left to the registry cleanup policy.
+
+---
+
+## 11. Status on 2026-10-27: what is built, what is still open
+
+### Against the sections of the proposal
+| Item | State |
+|---|---|
+| 1.1 Spotify API probe | Done (2026-10-24); playlist-visibility probes 2026-10-25 |
+| 2.1 Structure | Done: `app/`, `setup.R`, `server/*.R`, `strings.R`, `variables.R`, `list_card()`, one `card_download()`. Not done: `security.R`, a `www/`-style layout of R files (R code stays in `scripts/` and `server/`, never in `www/`, which is served to the public) |
+| 2.2 API layer that never throws | Done (httr2, states, retries, timeouts; async variant for the playlist loader) |
+| 2.3 OAuth | Done: signed `state`, no forced consent screen, token handling in plain functions (`current_token()`), `is_authenticated` stable across renewals. **Open:** idempotent playlist creation (see below) and `allowReconnect("force")`; (b) refresh token in the browser and (c) PKCE were not chosen |
+| 2.4 Smaller items | Done: one shared time range and number to show (remembered), FillariStatus in the footer, text in `TXT`, links in the browser copy only accept https. **Open:** card images are still fetched one after another (each with a fallback, no timeout of their own); `spotify_url` / `image_url` from the API go into `href` / `src` without a check; `theme_spotify()` asks for the font "Gotham", which the image doesn't have (silent fallback) |
+| 2.5 Security headers / CSP | **Not built** |
+| 2.6 `/health` | **Not built** |
+| 2.7 Tests | Done: API layer, retries (real local server), parsers, OAuth, display helpers, charts, playlists module (4,213 playlists), `testServer(server)`, list cards, stats card; run inside the production image in CI |
+| Phase 2 (accounts, keyless deploy, CI, image, Cloud Run settings, repo hygiene) | Done and verified. Registry cleanup: applied 2026-10-27 (see below) |
+| Phase 3 | Light mode: declined (2026-10-24). The rest not built |
+
+### Still open (none is approved yet; each needs the user's yes)
+1. **`deploy.sh` still reads `.env` with a hand-written `while IFS='=' read` loop**, the thing the memory note blames for a production outage. CI doesn't use it, so it only matters for the manual fallback. Proposal: read the two values from the environment or the existing secrets, keep the 32-hex check.
+2. **Security headers and CSP (2.5)** and **`/health` (2.6)**, plus an uptime check with an email alert. The biggest remaining gap from the proposal.
+3. **Creating a playlist is not idempotent**: a re-sent click on "Create" would make a second playlist. Not an issue while `allowReconnect` is off; needed before turning it on.
+4. **Share cards**: fetch the ten images in parallel with a timeout (a slow CDN can hold a download for a long time), and let only `https` Spotify addresses into `href` / `src` (as the browser copy already does).
+5. **Chart font**: pick a font that exists in the image instead of "Gotham".
+6. **Cloud housekeeping not verified**: a lifecycle rule on the build buckets (`run-sources-trackteller-app-europe-north1`, `trackteller-app_cloudbuild`; the listing showed none) and a budget alert for this project (the check could not be made: the Billing Budgets API is not enabled on the project `gcloud` uses as its quota project, and nothing was enabled).
+7. **Registry cleanup:** the policy is live since 2026-10-27 (keep the 5 newest, delete after 14 days); Google runs it on its own schedule. Expected: `trackteller-app` from 113 versions to about 39 and the repository from about 14.4 GB to far less. Check in a day or two.
+8. **Share cards:** Arabic, Thai, Devanagari and emoji still show as boxes.
+9. **Spotify Development Mode:** only users added in the Spotify dashboard can log in. That is Spotify's rule, not a bug, but it limits who can use the app.
+10. **Docs:** `PLAN.md` is the original build plan (status "IMPLEMENTED"); parts of it are out of date (files, `rocker/shiny:4.3.1`, time range sync, "incremental loading"). Left as it is on purpose; this file is the current plan.
+
+### Where things are written down
+`CLAUDE.md` (architecture and the pitfalls that cost time), `DEPLOY.md` (how it is deployed and set up), `README.md` and `docs/index.html` (what the app does), `infra/` (cloud setup scripts), and this file (decisions, findings, status).

@@ -8,11 +8,12 @@
 - 🎵 Browse your most played tracks with artist, album, duration, and Spotify links
 - 🕐 See your recently played tracks
 - 🎼 Explore genre distribution with interactive tooltips showing contributing artists
-- 📋 Browse your existing Spotify playlists with alphabetical filter and incremental loading
-- ✨ Create new playlists from your top tracks, favorite artists, or recently played
-- 📸 Download shareable stats cards (top 10 artists or tracks with Spotify images)
+- 📋 Browse all your Spotify playlists (thousands are fine): 50 to a page, A–Z with a first-letter filter, loaded in the background, and kept in your browser so a return visit is instant
+- ✨ Create new playlists from your top tracks, favorite artists, or recently played (they are always public: Spotify doesn't let apps make private ones, and the app tells you how to make them private)
+- 📸 Download shareable stats cards (top 10 artists or tracks with Spotify images; names in Chinese, Japanese and Korean too)
+- 🎚️ One time range and one "number to show" for every tab, remembered in your browser
 - 📱 Mobile-responsive design
-- 🔒 Secure OAuth with Spotify (no credentials stored)
+- 🔒 Secure OAuth with Spotify: signed, expiring `state` bound to your browser; nothing about you is stored on the server
 
 ## 📸 Screenshot
 
@@ -26,27 +27,34 @@
 
 ```text
 TrackTeller/
-├── app/                     # Everything that goes into the Docker image
-│   ├── ui.R                 # Function-based UI (5 tabs + OAuth callback handling)
-│   ├── server.R             # Server logic (Spotify API + visualizations + stats cards)
-│   ├── run.R                # App entry point
+├── app/                        # Everything that goes into the Docker image
+│   ├── run.R                   # Entry point: sources setup.R, ui.R, server.R and starts the app
+│   ├── setup.R                 # Packages and all code, loaded once at start
+│   ├── ui.R                    # Function-based UI (5 tabs)
+│   ├── server.R                # Puts the parts of server/ together
+│   ├── server/                 # auth, shared choices, one file per tab, downloads, playlist creation
 │   ├── scripts/
-│   │   ├── spotify_oauth.R  # Custom OAuth 2.0 implementation
-│   │   ├── config.R         # Environment-based configuration
-│   │   └── global.R         # Shared helpers (ggplot theme, colors)
-│   ├── css/
-│   │   └── styles.css       # Spotify dark theme + mobile responsiveness
-│   └── www/
-│       ├── redirect.js      # JavaScript for OAuth redirects
-│       └── favicon.png      # App favicon
-├── docs/
-│   └── index.html           # Static landing page (GitHub Pages)
-├── Dockerfile               # Container definition (rocker/shiny:4.3.1 + magick)
-├── docker-compose.yml       # Local development orchestration
-├── deploy.sh                # Google Cloud Run deployment script
-├── DEPLOY.md                # Deployment guide
-├── .env.example             # Credential template
-└── renv.lock                # Package dependency lock file
+│   │   ├── spotify_oauth.R     # OAuth 2.0: signed state, token exchange and refresh (httr2)
+│   │   ├── spotify_api.R       # Spotify API layer: states, retries, timeouts, parsers
+│   │   ├── playlists_module.R  # My Playlists tab (Shiny module) and playlists.R, its helpers
+│   │   ├── list_cards.R        # The cards of the three lists
+│   │   ├── stats_card.R        # The share image (magick)
+│   │   ├── display.R, charts.R, dialogs.R, strings.R, variables.R, config.R, global.R
+│   ├── css/styles.css          # Spotify dark theme + mobile responsiveness
+│   └── www/                    # redirect.js, preferences.js, tabs.js, playlists-cache.js, favicon
+├── tests/                      # testthat suite (Spotify mocked), run inside the production image
+├── infra/                      # Cloud setup scripts and the registry cleanup policy
+├── .github/workflows/          # tests.yml and deploy_shiny_app.yml (CI/CD), Dependabot
+├── docs/index.html             # Static landing page (GitHub Pages)
+├── Dockerfile                  # rocker/r-ver:4.5.2 + magick, fonts, packages from renv.lock
+├── docker-compose.yml          # Local development
+├── deploy.sh                   # Manual deploy to Cloud Run (the workflow does it normally)
+├── DEPLOY.md                   # How it is deployed and how to set it up
+├── CLAUDE.md                   # Architecture notes and pitfalls, for contributors and Claude Code
+├── PLAN.md                     # The original build plan (historical; the refactor plan below is the current one)
+├── trackteller-refactor-plan.md  # The 2026 refactor: decisions, findings, what is open
+├── .env.example                # Credential template
+└── renv.lock                   # Package dependency lock file (R 4.5.2)
 ```
 
 ## 🔄 How It Works
@@ -56,8 +64,8 @@ TrackTeller/
 3. **Top Tracks**: Browse your most played tracks with artist, album, and popularity info.
 4. **Recently Played**: See what you've been listening to lately.
 5. **Top Genres**: Visualize the genre distribution across your top artists.
-6. **My Playlists**: Browse your existing Spotify playlists with track counts.
-7. **Create Playlist**: Generate new playlists from top artists, top tracks, or recently played — directly from each tab.
+6. **My Playlists**: Browse all your Spotify playlists, 50 to a page. They appear as they load; when everything is here you get A–Z order and the first-letter filter. A copy is kept in your browser (and removed at logout) so the next visit starts instantly. If Spotify counts playlists its API no longer has, the tab says how many can't be loaded.
+7. **Create Playlist**: Generate new playlists from top artists, top tracks, or recently played — directly from each tab. They are public (Spotify's API can't make private ones); open one in Spotify and choose "Make private" if you want.
 8. **Share Stats**: Download a 1200×630 PNG card for Top Artists or Top Tracks, complete with Spotify images.
 
 ## 🔐 API Keys Required
@@ -77,21 +85,30 @@ Set these as environment variables or in a `.env` file.
 cp .env.example .env
 # Edit .env with your Spotify credentials
 
-# Build and run with Docker
+# Build and run with Docker (everything under app/ reloads on change)
 sudo docker compose up --build
 
 # Access at http://127.0.0.1:8080
 ```
 
-## 🚀 Deployment
+Add `http://127.0.0.1:8080` as a redirect URI in your Spotify app (Spotify doesn't allow `localhost`).
 
-Deployed on **Google Cloud Run** with credentials stored in **Secret Manager**.
+### Tests
 
-See [DEPLOY.md](DEPLOY.md) for full deployment instructions, or quick deploy:
+The tests run inside the production image, so they see the same R and package versions as production, and they never call Spotify (it is mocked):
 
 ```bash
-./deploy.sh
+docker build -t trackteller-ci .
+tests/run_in_docker.sh trackteller-ci
 ```
+
+They cover the API layer and its retries, the parsers, the OAuth flow, the server (`testServer()`), the My Playlists module (including a 4,213-playlist run) and the share cards. The page itself and a real login are checked by hand.
+
+## 🚀 Deployment
+
+Deployed on **Google Cloud Run**, with the Spotify credentials in **Secret Manager** and a least-privilege runtime account. A push to `main` that touches the app runs the tests and, if they pass, deploys through GitHub Actions with a keyless (Workload Identity) login, then smoke-tests the new revision. `./deploy.sh` is the manual fallback.
+
+See [DEPLOY.md](DEPLOY.md) for how it is set up and run.
 
 ## 📦 Required R Packages
 
@@ -99,7 +116,7 @@ See [DEPLOY.md](DEPLOY.md) for full deployment instructions, or quick deploy:
 - [conflicted](https://conflicted.r-lib.org/) - Conflict resolution for functions
 - [dplyr](https://dplyr.tidyverse.org/) - Data manipulation
 - [ggplot2](https://ggplot2.tidyverse.org/) - Data visualization
-- [httr](https://httr.r-lib.org/) - HTTP requests and OAuth
+- [httr2](https://httr2.r-lib.org/) - HTTP requests, retries and OAuth token calls
 - [jsonlite](https://github.com/jeroen/jsonlite) - JSON serialization
 - [magick](https://docs.ropensci.org/magick/) - Image compositing for stats cards
 - [plotly](https://plotly-r.com/) - Interactive plots
@@ -108,6 +125,8 @@ See [DEPLOY.md](DEPLOY.md) for full deployment instructions, or quick deploy:
 - [stringr](https://stringr.tidyverse.org/) - String manipulation
 - [tidyr](https://tidyr.tidyverse.org/) - Data tidying
 - [waiter](https://waiter.john-coene.com/) - Loading animations
+
+Used directly and installed with the packages above: [openssl](https://jeroen.cloud/openssl/) (the signed OAuth `state`), [stringi](https://stringi.gagolewski.com/) (text width on the share cards), [promises](https://rstudio.github.io/promises/) and [later](https://r-lib.github.io/later/) (the playlist loader). Tests use [testthat](https://testthat.r-lib.org/) (not part of the image).
 
 ## 🎨 Tech Stack
 
@@ -119,8 +138,9 @@ See [DEPLOY.md](DEPLOY.md) for full deployment instructions, or quick deploy:
 | Visualizations | plotly + ggplot2 |
 | Image Processing | magick (ImageMagick) |
 | Styling | Custom CSS (dark theme) |
-| Containerization | Docker |
-| Deployment | Google Cloud Run |
+| Tests | testthat 3, `testServer()`, httr2 mocks |
+| Containerization | Docker (rocker/r-ver) |
+| Deployment | Google Cloud Run, GitHub Actions (keyless) |
 | Secrets | Google Cloud Secret Manager |
 
 ## 💡 How It Started
