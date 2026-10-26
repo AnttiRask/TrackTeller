@@ -10,6 +10,14 @@ library(tibble)
 source(file.path(app_dir, "scripts", "spotify_api.R"))
 source(file.path(app_dir, "scripts", "spotify_oauth.R"))
 
+# The whole app (packages, scripts and the parts of the server), as it is loaded when it
+# starts, for the tests of the server and of the pieces of the page. It reads its files
+# relative to the app folder.
+withr::with_dir(app_dir, source("setup.R"))
+source(file.path(app_dir, "server.R"))
+assign("SPOTIFY_CLIENT_ID", "test-client", envir = globalenv())
+assign("SPOTIFY_CLIENT_SECRET", "test-secret", envir = globalenv())
+
 # No waiting between retries in the tests
 no_wait <- function(i) 0
 
@@ -69,4 +77,46 @@ start_flaky_server <- function(codes, headers = list(), delay = 0) {
         url = url, proc = proc,
         count = function() resp_body_json(req_perform(request(paste0(url, "/count"))))$count
     )
+}
+
+# A Spotify that answers by method and path, for the tests of the server. `...` are
+# "GET /me" = <response, or function(req) returning one>; the last answer of a route
+# repeats, and a list of responses is used one after the other. A request nobody listed
+# is recorded in $unexpected (and answered with an error), so a test can insist that
+# nothing else was asked. $requests keeps every request that was made.
+spotify_router <- function(...) {
+    # In the tests every output is computed, so every tab asks Spotify; they get an empty
+    # answer unless the test says otherwise
+    nothing <- httr2::response_json(200L, body = list(items = list()))
+    routes <- modifyList(list(
+        "GET /me/top/artists" = nothing, "GET /me/top/tracks" = nothing,
+        "GET /me/player/recently-played" = nothing
+    ), list(...))
+    env <- new.env()
+    env$requests <- list()
+    env$unexpected <- character(0)
+    env$used <- list()
+    env$keys <- function() vapply(env$requests, \(r) r$key, character(1))
+    env$mock <- function(req) {
+        path <- sub("\\?.*$", "", sub("^https://[^/]+(/v1)?", "", req$url))
+        key <- paste(httr2::req_get_method(req), path)
+        env$requests[[length(env$requests) + 1]] <- list(key = key, req = req)
+
+        route <- routes[[key]]
+        if (is.null(route)) {
+            env$unexpected <- c(env$unexpected, key)
+            return(httr2::response_json(500L, body = list(error = "unexpected request")))
+        }
+        if (is.function(route)) return(route(req))
+        if (inherits(route, "httr2_response")) return(route)
+        n <- (env$used[[key]] %||% 0L) + 1L
+        env$used[[key]] <- n
+        route[[min(n, length(route))]]
+    }
+    env
+}
+
+fresh_token <- function(access_token = "tok", expires_in = 3600) {
+    list(access_token = access_token, token_type = "Bearer", refresh_token = "ref",
+         expires_at = Sys.time() + expires_in)
 }

@@ -62,3 +62,14 @@ sanitise_prefs <- function(prefs) {
 
     out
 }
+
+# A value, or NULL when computing it fails or is not ready (the note under a list
+# must not repeat the list's own error message)
+quiet <- function(value) tryCatch(value, error = function(e) NULL)
+
+# The title of a created playlist: the name the user typed, or the default for where it
+# came from ("top_tracks", "artist_tracks" or "recently_played"), and the date
+playlist_title <- function(name, source, date = Sys.Date()) {
+    name <- trimws(name %||% "")
+    paste0(if (nzchar(name)) name else TXT$playlist_default_name[[source]], " (", date, ")")
+}
