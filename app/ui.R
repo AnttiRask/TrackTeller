@@ -1,22 +1,3 @@
-# Load required packages
-library(bslib)
-library(conflicted)
-library(plotly)
-library(purrr)
-library(stringr)
-library(waiter)
-
-# Load scripts from the 'scripts' folder
-source("scripts/global.R", local = TRUE)
-source("scripts/config.R", local = TRUE)
-source("scripts/spotify_oauth.R", local = TRUE)
-source("scripts/spotify_api.R", local = TRUE)
-source("scripts/display.R", local = TRUE)
-source("scripts/charts.R", local = TRUE)
-source("scripts/dialogs.R", local = TRUE)
-source("scripts/playlists.R", local = TRUE)
-source("scripts/playlists_module.R", local = TRUE)
-
 # Shared footer component for cross-linking between apps
 create_app_footer <- function(current_app = "") {
     tags$footer(
