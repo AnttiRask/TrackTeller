@@ -123,3 +123,10 @@ test_that("a state is refused in a browser that didn't start the login", {
     expect_equal(oauth_state_check(login$state, "", "secret")$reason, "browser")
     expect_equal(oauth_state_check(login$state, NULL, "secret")$reason, "browser")
 })
+
+test_that("Spotify's consent screen is asked for only when we say so", {
+    plain <- spotify_authorize_url("id", "http://127.0.0.1:8080", "a", "s")
+    expect_false(grepl("show_dialog", plain))
+    forced <- spotify_authorize_url("id", "http://127.0.0.1:8080", "a", "s", force_dialog = TRUE)
+    expect_match(forced, "show_dialog=true")
+})

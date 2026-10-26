@@ -53,16 +53,19 @@ oauth_state_check <- function(state, browser_nonce, secret, now = Sys.time(),
     list(ok = TRUE, reason = NULL)
 }
 
-# Generate the Spotify authorization URL for a state made by oauth_state_new()
-spotify_authorize_url <- function(client_id, redirect_uri, scope, state) {
+# Generate the Spotify authorization URL for a state made by oauth_state_new().
+# Spotify skips its consent screen when this app already has the user's consent, so a return
+# visit is one click. force_dialog = TRUE asks for the screen anyway (and with it the choice
+# of account): used after the user has logged out.
+spotify_authorize_url <- function(client_id, redirect_uri, scope, state, force_dialog = FALSE) {
     params <- list(
         client_id = client_id,
         response_type = "code",
         redirect_uri = redirect_uri,
         scope = paste(scope, collapse = " "),
-        state = state,
-        show_dialog = "true"
+        state = state
     )
+    if (isTRUE(force_dialog)) params$show_dialog <- "true"
 
     query_string <- paste(
         names(params),
