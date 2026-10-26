@@ -6,7 +6,9 @@ FROM rocker/r-ver:4.5.2
 # "noble"). The list comes from Posit Package Manager's sysreqs API:
 #   https://p3m.dev/__api__/repos/cran/sysreqs?distribution=ubuntu&release=24.04&all=true
 # libmagick++-dev (+ gsfonts) is for magick, which draws the share cards;
-# fonts-liberation is the font those cards use ("Liberation Sans"). cmake and
+# fonts-liberation is the font those cards use ("Liberation Sans"), and fonts-noto-cjk
+# the one for names in Chinese, Japanese or Korean ("Noto Sans CJK JP", about 90 MB;
+# ImageMagick can't fall back from one font to another within a text). cmake and
 # make are only used if a pinned package has to be compiled. Retries tolerate
 # transient apt mirror failures.
 RUN for i in 1 2 3; do \
@@ -14,6 +16,7 @@ RUN for i in 1 2 3; do \
             cmake \
             make \
             fonts-liberation \
+            fonts-noto-cjk \
             gsfonts \
             libcurl4-openssl-dev \
             libicu-dev \

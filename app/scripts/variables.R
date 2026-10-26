@@ -13,6 +13,7 @@ STATS_CARD <- list(
     width = 1200L, height = 630L,
     background = "#191414", placeholder = "#282828",
     font = "Liberation Sans",
+    font_cjk = "Noto Sans CJK JP",       # also has Latin letters, and Chinese and Korean too
     image_size = 70L, row_height = 90L, start_y = 108L,
     per_column = 5L,                     # 10 rows: five on the left, five on the right
     footer = "trackteller.youcanbeapirate.com"
