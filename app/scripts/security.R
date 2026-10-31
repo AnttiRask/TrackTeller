@@ -21,6 +21,8 @@ security_headers <- function(req) {
         )
     )
 
+    headers <- c(headers, csp_headers(req))
+
     proto <- tolower(as.character(req$HTTP_X_FORWARDED_PROTO %||% ""))
     if (length(proto) == 1 && startsWith(proto, "https")) {
         headers[["Strict-Transport-Security"]] <- "max-age=31536000"
