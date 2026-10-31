@@ -89,7 +89,8 @@ A value that isn't 32 lowercase hex characters is refused before anything is sto
    ```
 
    (Without `--no-dry-run` it only reports what it would delete.)
-6. **GitHub**: the repository's `main` is protected, secret scanning and push protection are on, and Dependabot watches the Actions and the Docker base image.
+6. **Uptime check and alert**: `ALERT_EMAIL=you@example.com infra/setup_uptime_alert.sh` (the address is not kept in the repository). It creates an email channel, an uptime check on `GET /health` every five minutes (passes on 200 with the body `ok`) and an alert policy that emails when at least two locations see it fail at the same time, and when it recovers. Safe to re-run; things are matched by name. Uptime checks and email alerts are in Google's free tier at this volume. The check looks at the configuration, not at Spotify: a Spotify outage does not alert.
+7. **GitHub**: the repository's `main` is protected, secret scanning and push protection are on, and Dependabot watches the Actions and the Docker base image.
 
 ## Changing the R packages
 
