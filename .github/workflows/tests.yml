@@ -46,6 +46,14 @@ jobs:
           done
           [ "$CODE" = "200" ]
           curl -s http://127.0.0.1:8080/ | grep -q "Log in with Spotify"
+          # The page carries the security headers; HSTS only when it came in over https
+          HEADERS=$(curl -sI http://127.0.0.1:8080/)
+          for header in "X-Frame-Options: DENY" "X-Content-Type-Options: nosniff" \
+                        "Referrer-Policy: strict-origin-when-cross-origin" "Permissions-Policy: camera=()"; do
+            echo "$HEADERS" | grep -qi "^$header" || { echo "Missing header: $header"; exit 1; }
+          done
+          if echo "$HEADERS" | grep -qi "^Strict-Transport-Security"; then echo "HSTS sent over plain http"; exit 1; fi
+          curl -sI -H "X-Forwarded-Proto: https" http://127.0.0.1:8080/ | grep -qi "^Strict-Transport-Security: max-age=31536000"
           for asset in www/redirect.js www/favicon.png; do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:8080/$asset")
             echo "$asset: HTTP $CODE"
