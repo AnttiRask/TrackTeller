@@ -9,7 +9,7 @@ source("ui.R")
 source("server.R")
 
 # Create and run the application with function-based UI
-# /health first, then the security headers around everything the handler answers
+# /health and the CSP report endpoint first, then the security headers around everything the handler answers
 app <- shinyApp(
     ui = uiFunc,
     server = server,
@@ -19,6 +19,7 @@ app <- shinyApp(
     )
 ) |>
     with_health_check() |>
+    with_csp_reports() |>
     with_security_headers()
 
 # Add JavaScript handler for OAuth redirect

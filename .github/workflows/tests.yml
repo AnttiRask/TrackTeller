@@ -54,6 +54,14 @@ jobs:
           done
           if echo "$HEADERS" | grep -qi "^Strict-Transport-Security"; then echo "HSTS sent over plain http"; exit 1; fi
           curl -sI -H "X-Forwarded-Proto: https" http://127.0.0.1:8080/ | grep -qi "^Strict-Transport-Security: max-age=31536000"
+          # The Content-Security-Policy (report-only until the policy has been checked against real
+          # use) and the endpoint its reports go to
+          echo "$HEADERS" | grep -qi "^Content-Security-Policy-Report-Only: default-src 'self'" || { echo "Missing CSP header"; exit 1; }
+          echo "$HEADERS" | grep -qi "^Reporting-Endpoints: csp=" || { echo "Missing Reporting-Endpoints header"; exit 1; }
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Content-Type: application/csp-report" \
+            --data '{"csp-report":{"effective-directive":"img-src","blocked-uri":"https://x.example/a"}}' http://127.0.0.1:8080/csp-report)
+          echo "POST /csp-report: HTTP $CODE"
+          [ "$CODE" = "204" ]
           # /health: this container has no credentials, so it must say what is missing
           CODE=$(curl -s -o /tmp/health.txt -w '%{http_code}' http://127.0.0.1:8080/health)
           echo "/health without credentials: HTTP $CODE: $(cat /tmp/health.txt)"

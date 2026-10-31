@@ -22,7 +22,7 @@ conflict_prefer("validate", "shiny")
 for (file in c(
     "global", "config", "strings", "variables",
     "spotify_oauth", "spotify_api",
-    "display", "charts", "dialogs", "list_cards", "stats_card", "security", "health",
+    "display", "charts", "dialogs", "list_cards", "stats_card", "csp", "security", "health",
     "playlists", "playlists_module"
 )) {
     source(file.path("scripts", paste0(file, ".R")))
