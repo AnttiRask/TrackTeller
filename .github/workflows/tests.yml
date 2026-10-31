@@ -54,12 +54,35 @@ jobs:
           done
           if echo "$HEADERS" | grep -qi "^Strict-Transport-Security"; then echo "HSTS sent over plain http"; exit 1; fi
           curl -sI -H "X-Forwarded-Proto: https" http://127.0.0.1:8080/ | grep -qi "^Strict-Transport-Security: max-age=31536000"
+          # /health: this container has no credentials, so it must say what is missing
+          CODE=$(curl -s -o /tmp/health.txt -w '%{http_code}' http://127.0.0.1:8080/health)
+          echo "/health without credentials: HTTP $CODE: $(cat /tmp/health.txt)"
+          [ "$CODE" = "503" ]
+          grep -q "SPOTIFY_CLIENT_ID" /tmp/health.txt
           for asset in www/redirect.js www/favicon.png; do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:8080/$asset")
             echo "$asset: HTTP $CODE"
             [ "$CODE" = "200" ]
           done
 
+      # The same image with made-up credentials of the right shape and an https address: healthy
+      - name: Check /health on a configured container
+        run: |
+          docker run -d --name trackteller-ci-configured -e PORT=8080 -p 8081:8080 \
+            -e SPOTIFY_CLIENT_ID=0123456789abcdef0123456789abcdef \
+            -e SPOTIFY_CLIENT_SECRET=fedcba9876543210fedcba9876543210 \
+            -e APP_URL=https://example.test trackteller-ci
+          for attempt in $(seq 1 30); do
+            CODE=$(curl -s -o /tmp/health.txt -w '%{http_code}' --max-time 5 http://127.0.0.1:8081/health || true)
+            echo "Attempt $attempt: HTTP $CODE"
+            [ "$CODE" = "200" ] && break
+            sleep 5
+          done
+          [ "$CODE" = "200" ]
+          [ "$(cat /tmp/health.txt)" = "ok" ]
+
       - name: App log (on failure)
         if: failure()
-        run: docker logs trackteller-ci
+        run: |
+          docker logs trackteller-ci
+          docker logs trackteller-ci-configured || true

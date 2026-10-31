@@ -23,32 +23,7 @@ SPOTIFY_SCOPES <- c(
     "playlist-modify-private"
 )
 
-# Validate configuration
-validate_config <- function() {
-    errors <- c()
-
-    if (SPOTIFY_CLIENT_ID == "") {
-        errors <- c(errors, "SPOTIFY_CLIENT_ID environment variable is not set")
-    }
-
-    if (SPOTIFY_CLIENT_SECRET == "") {
-        errors <- c(errors, "SPOTIFY_CLIENT_SECRET environment variable is not set")
-    }
-
-    if (length(errors) > 0) {
-        warning(paste("Configuration errors:", paste(errors, collapse = "; ")))
-        return(FALSE)
-    }
-
-    TRUE
-}
-
 # Check if we're running in production mode
 is_production <- function() {
     Sys.getenv("SHINY_ENV", "development") == "production"
-}
-
-# Get the port to run on
-get_port <- function() {
-    as.integer(Sys.getenv("PORT", "8080"))
 }
