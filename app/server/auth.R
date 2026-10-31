@@ -89,6 +89,13 @@ auth_server <- function(input, output, session,
         }
     })
 
+    # The last page lost its connection (www/session-ended.js): say why this one starts logged out
+    observeEvent(input$session_ended, {
+        if (!is_authenticated()) {
+            set_auth_message("text-warning", "exclamation-triangle", TXT$session_expired)
+        }
+    }, once = TRUE)
+
     # Logged out in this session: Spotify would sign the same account straight back in
     after_logout <- reactiveVal(FALSE)
 

@@ -57,6 +57,7 @@ uiFunc <- function(req) {
                 tags$script(src = paste0("www/redirect.js?v=", substr(unname(tools::md5sum("www/redirect.js")), 1, 8))),
                 tags$script(src = "www/preferences.js"),
                 tags$script(src = "www/tabs.js"),
+                tags$script(src = "www/session-ended.js"),
                 tags$script(src = "www/playlists-cache.js"),
                 includeCSS("css/styles.css"),
                 # A waiter over the lists that are being fetched. Not over everything: it would
