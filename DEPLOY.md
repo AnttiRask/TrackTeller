@@ -54,10 +54,21 @@ Then fix `main`; the next deploy takes the traffic back.
 If GitHub Actions is unavailable, from a checkout of `main`, logged in with `gcloud`:
 
 ```bash
+./deploy.sh --dry-run   # checks the credentials and prints the deploy command; changes nothing
 ./deploy.sh
 ```
 
-It reads the credentials from `.env`, checks that they are 32-character hex strings, stores them in Secret Manager if they changed, and deploys with the flags above. Check the stored values afterwards (hidden quotes or `\r` have caused an outage before).
+The script reads no `.env` file and asks nothing. It uses the Spotify credentials already in Secret Manager (checked: 32 lowercase hex characters each) and deploys with the same flags as the workflow, labelling the revision with the commit (`-dirty` when there are uncommitted changes). The production URL is fixed in the script, so an `APP_URL` left in your shell can't end up in production.
+
+To store *new* credentials, put both in the environment for that one run (without leaving them in your shell history):
+
+```bash
+read -rp "Client id: " SPOTIFY_CLIENT_ID; read -rsp "Client secret: " SPOTIFY_CLIENT_SECRET; echo
+export SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET
+./deploy.sh
+```
+
+A value that isn't 32 lowercase hex characters is refused before anything is stored (hidden quotes or `\r` have caused an outage before); the message never prints the value. Check the revision afterwards (see "Checking a deploy").
 
 ## First-time setup (or rebuilding the project)
 
