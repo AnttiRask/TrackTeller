@@ -8,7 +8,7 @@ You don't run anything. A push to `main` that touches `app/**` or the build file
 
 1. **Tests**: the same job as `tests.yml`: the image is built, the testthat suite runs inside it, and the app is started once to see that it boots. A failure stops the deploy.
 2. **Deploy**: logs in to Google Cloud without a key (Workload Identity Federation, as the service account `trackteller-deploy`, for this repository's `main` branch only) and runs `gcloud run deploy --source .`.
-3. **Smoke test**: checks that the service carries the `git-sha` label of the commit that was pushed and that `GET /` answers 200 (up to five tries, ten seconds apart).
+3. **Smoke test**: checks that the service carries the `git-sha` label of the commit that was pushed, that `GET /health` answers 200 (the instance says its credentials and redirect address are in order; no Spotify call is made) and that `GET /` answers 200 (up to five tries each, ten seconds apart).
 
 It can also be started by hand: Actions tab → *Deploy to Cloud Run* → *Run workflow*, or `gh workflow run deploy_shiny_app.yml --ref main`. A deploy takes about nine minutes.
 
@@ -34,6 +34,10 @@ gcloud run services describe trackteller-app --region europe-north1 --project tr
 # Errors in the last 20 minutes
 gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=trackteller-app AND severity>=ERROR' \
   --project trackteller-app --freshness 20m --limit 20
+```
+
+```bash
+curl -i https://trackteller.youcanbeapirate.com/health   # 200 ok, or 503 unhealthy: <what is wrong>
 ```
 
 Then use the live app: log in, open each tab, download a card, create a playlist.

@@ -9,14 +9,17 @@ source("ui.R")
 source("server.R")
 
 # Create and run the application with function-based UI
-app <- with_security_headers(shinyApp(
+# /health first, then the security headers around everything the handler answers
+app <- shinyApp(
     ui = uiFunc,
     server = server,
     options = list(
         host = "0.0.0.0",
         port = as.integer(Sys.getenv("PORT", "8080"))
     )
-))
+) |>
+    with_health_check() |>
+    with_security_headers()
 
 # Add JavaScript handler for OAuth redirect
 shiny::addResourcePath("www", "www")

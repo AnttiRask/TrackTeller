@@ -92,6 +92,18 @@ jobs:
             echo "The service doesn't carry this commit's label"
             exit 1
           fi
+          # The deployed instance says itself whether its configuration works (credentials from
+          # Secret Manager, the https redirect address); no Spotify call is made
+          for attempt in 1 2 3 4 5; do
+            CODE=$(curl -s -o /tmp/health.txt -w '%{http_code}' --max-time 60 "$URL/health" || true)
+            echo "Attempt $attempt: /health HTTP $CODE: $(cat /tmp/health.txt 2>/dev/null)"
+            [ "$CODE" = "200" ] && break
+            sleep 10
+          done
+          if [ "$CODE" != "200" ]; then
+            echo "The service reports a configuration problem"
+            exit 1
+          fi
           for attempt in 1 2 3 4 5; do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$URL/" || true)
             echo "Attempt $attempt: HTTP $CODE"
