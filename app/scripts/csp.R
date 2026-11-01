@@ -1,9 +1,10 @@
 # Content-Security-Policy: what the browser may load for the page, and where it reports
-# what it would block. It has three modes, set with the CSP_MODE environment variable so
-# that going back needs no rebuild (gcloud run services update --update-env-vars):
-#   "report-only"  the browser reports violations and blocks nothing (the default while the
-#                  policy is being checked against real use)
-#   "enforce"      the browser blocks them
+# what it blocks. It has three modes, set with the CSP_MODE environment variable so that
+# going back needs no rebuild (gcloud run services update --update-env-vars CSP_MODE=...):
+#   "enforce"      the browser blocks violations and reports them (the default, and what an
+#                  unknown value means: a typo must not weaken the policy)
+#   "report-only"  the browser reports violations and blocks nothing (to check a changed
+#                  policy against real use before enforcing it)
 #   "off"          no policy
 # Violations are reported to POST /csp-report and written to the log as one short line
 # each: only what was blocked (origin or kind) and where, never an address's query: the
@@ -12,8 +13,8 @@
 CSP_REPORT_PATH <- "/csp-report"
 
 csp_mode <- function() {
-    mode <- tolower(Sys.getenv("CSP_MODE", "report-only"))
-    if (mode %in% c("report-only", "enforce", "off")) mode else "report-only"
+    mode <- tolower(Sys.getenv("CSP_MODE", "enforce"))
+    if (mode %in% c("report-only", "enforce", "off")) mode else "enforce"
 }
 
 # The policy for a page served on `host` (the websocket goes to the same host).

@@ -54,9 +54,9 @@ jobs:
           done
           if echo "$HEADERS" | grep -qi "^Strict-Transport-Security"; then echo "HSTS sent over plain http"; exit 1; fi
           curl -sI -H "X-Forwarded-Proto: https" http://127.0.0.1:8080/ | grep -qi "^Strict-Transport-Security: max-age=31536000"
-          # The Content-Security-Policy (report-only until the policy has been checked against real
-          # use) and the endpoint its reports go to
-          echo "$HEADERS" | grep -qi "^Content-Security-Policy-Report-Only: default-src 'self'" || { echo "Missing CSP header"; exit 1; }
+          # The Content-Security-Policy is enforced (not report-only), and has an endpoint for its reports
+          echo "$HEADERS" | grep -qi "^Content-Security-Policy: default-src 'self'" || { echo "Missing CSP header"; exit 1; }
+          if echo "$HEADERS" | grep -qi "^Content-Security-Policy-Report-Only"; then echo "CSP is report-only"; exit 1; fi
           echo "$HEADERS" | grep -qi "^Reporting-Endpoints: csp=" || { echo "Missing Reporting-Endpoints header"; exit 1; }
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Content-Type: application/csp-report" \
             --data '{"csp-report":{"effective-directive":"img-src","blocked-uri":"https://x.example/a"}}' http://127.0.0.1:8080/csp-report)
