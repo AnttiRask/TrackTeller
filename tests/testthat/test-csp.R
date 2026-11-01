@@ -43,22 +43,36 @@ test_that("the mode picks the header: report-only reports, enforce blocks, off s
     expect_length(csp_headers(req, "off"), 0)
 })
 
-test_that("CSP_MODE selects the mode, and anything unknown falls back to report-only", {
-    withr::with_envvar(c(CSP_MODE = "enforce"), expect_equal(csp_mode(), "enforce"))
-    withr::with_envvar(c(CSP_MODE = "ENFORCE"), expect_equal(csp_mode(), "enforce"))
+test_that("CSP_MODE selects the mode; unset or unknown means enforce", {
+    withr::with_envvar(c(CSP_MODE = "report-only"), expect_equal(csp_mode(), "report-only"))
+    withr::with_envvar(c(CSP_MODE = "REPORT-ONLY"), expect_equal(csp_mode(), "report-only"))
     withr::with_envvar(c(CSP_MODE = "off"), expect_equal(csp_mode(), "off"))
-    withr::with_envvar(c(CSP_MODE = "nonsense"), expect_equal(csp_mode(), "report-only"))
-    withr::with_envvar(c(CSP_MODE = NA), expect_equal(csp_mode(), "report-only"))
+    withr::with_envvar(c(CSP_MODE = "enforce"), expect_equal(csp_mode(), "enforce"))
+    # a typo must not weaken the policy
+    withr::with_envvar(c(CSP_MODE = "enforced"), expect_equal(csp_mode(), "enforce"))
+    withr::with_envvar(c(CSP_MODE = "nonsense"), expect_equal(csp_mode(), "enforce"))
+    withr::with_envvar(c(CSP_MODE = ""), expect_equal(csp_mode(), "enforce"))
+    withr::with_envvar(c(CSP_MODE = NA), expect_equal(csp_mode(), "enforce"))
 })
 
-test_that("the page's headers include the policy", {
-    withr::local_envvar(CSP_MODE = "report-only")
-    resp <- add_security_headers(shiny::httpResponse(200L, "text/html", "x"), list(HTTP_HOST = "x.example"))
-    expect_match(resp$headers[["Content-Security-Policy-Report-Only"]], "^default-src 'self'")
-    withr::local_envvar(CSP_MODE = "off")
-    resp <- add_security_headers(shiny::httpResponse(200L, "text/html", "x"), list(HTTP_HOST = "x.example"))
-    expect_null(resp$headers[["Content-Security-Policy-Report-Only"]])
-    expect_equal(resp$headers[["X-Frame-Options"]], "DENY")
+test_that("the page's headers include the policy, enforced unless the mode says otherwise", {
+    req <- list(HTTP_HOST = "x.example")
+    withr::with_envvar(c(CSP_MODE = NA), {
+        resp <- add_security_headers(shiny::httpResponse(200L, "text/html", "x"), req)
+        expect_match(resp$headers[["Content-Security-Policy"]], "^default-src 'self'")
+        expect_null(resp$headers[["Content-Security-Policy-Report-Only"]])
+    })
+    withr::with_envvar(c(CSP_MODE = "report-only"), {
+        resp <- add_security_headers(shiny::httpResponse(200L, "text/html", "x"), req)
+        expect_match(resp$headers[["Content-Security-Policy-Report-Only"]], "^default-src 'self'")
+        expect_null(resp$headers[["Content-Security-Policy"]])
+    })
+    withr::with_envvar(c(CSP_MODE = "off"), {
+        resp <- add_security_headers(shiny::httpResponse(200L, "text/html", "x"), req)
+        expect_null(resp$headers[["Content-Security-Policy"]])
+        expect_null(resp$headers[["Content-Security-Policy-Report-Only"]])
+        expect_equal(resp$headers[["X-Frame-Options"]], "DENY")
+    })
 })
 
 # ---- reports ----
