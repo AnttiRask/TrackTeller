@@ -83,7 +83,7 @@ CI runs the same script (`tests.yml`). httr2's mocks skip its retry loop, so the
 
 ## Where things stand
 
-The 2026 refactor is built and live; what is still open (a Content-Security-Policy, idempotent playlist creation, parallel card images, cloud housekeeping) is listed in section 11 of `trackteller-refactor-plan.md`, with the reasons. None of it is approved until the user says so. Deploying and running the cloud setup are described in `DEPLOY.md`.
+The 2026 refactor is built and live; what is still open (enforcing the Content-Security-Policy, which is live in report-only mode; idempotent playlist creation; parallel card images; cloud housekeeping) is listed in section 11 of `trackteller-refactor-plan.md`, with the reasons. None of it is approved until the user says so. Deploying and running the cloud setup are described in `DEPLOY.md`.
 
 ## R Coding Conventions
 
