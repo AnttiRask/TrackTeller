@@ -107,7 +107,7 @@ A value that isn't 32 lowercase hex characters is refused before anything is sto
 
 ## Changing the R packages
 
-Don't snapshot on a laptop: the lock is for R 4.5.2 and a different R or OS records packages that don't restore in the image. Run `infra/regenerate_renv_lock.sh`, which builds the lock inside the image's base, and keep its package list in step with the `library()` calls in `app/`.
+Don't snapshot on a laptop: the lock is for R 4.5.x and a different R or OS records packages that don't restore in the image. Run `infra/regenerate_renv_lock.sh`, which builds the lock inside the image's base, and keep its package list in step with the `library()` calls in `app/`.
 
 ## Cost
 

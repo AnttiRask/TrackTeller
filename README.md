@@ -46,7 +46,7 @@ TrackTeller/
 ├── infra/                      # Cloud setup scripts and the registry cleanup policy
 ├── .github/workflows/          # tests.yml and deploy_shiny_app.yml (CI/CD), Dependabot
 ├── docs/index.html             # Static landing page (GitHub Pages)
-├── Dockerfile                  # rocker/r-ver:4.5.2 + magick, fonts, packages from renv.lock
+├── Dockerfile                  # rocker/r-ver:4.5.3 + magick, fonts, packages from renv.lock
 ├── docker-compose.yml          # Local development
 ├── deploy.sh                   # Manual deploy to Cloud Run (the workflow does it normally)
 ├── DEPLOY.md                   # How it is deployed and how to set it up
@@ -54,7 +54,7 @@ TrackTeller/
 ├── PLAN.md                     # The original build plan (historical; the refactor plan below is the current one)
 ├── trackteller-refactor-plan.md  # The 2026 refactor: decisions, findings, what is open
 ├── .env.example                # Credential template
-└── renv.lock                   # Package dependency lock file (R 4.5.2)
+└── renv.lock                   # Package dependency lock file (R 4.5.x)
 ```
 
 ## 🔄 How It Works
