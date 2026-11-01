@@ -14,7 +14,7 @@ card_figure <- function(text, accent = FALSE) {
 # rank:   what stands in the green number
 # lines:  the card_title() / card_line() / card_detail() elements, in order
 # figures: card_figure() elements, or NULL for none
-# url:    the Spotify link
+# url:    the Spotify link (NA when there is none: the card then has no Open button)
 list_card <- function(class, rank, lines, figures = NULL, url) {
     tags$div(
         class = class,
@@ -28,9 +28,10 @@ list_card <- function(class, rank, lines, figures = NULL, url) {
             style = "text-align: right; color: #b3b3b3; font-size: 0.85em;",
             figures
         ),
-        tags$a(
+        if (!is.na(url)) tags$a(
             href = url,
             target = "_blank",
+            rel = "noopener noreferrer",
             style = paste0(
                 "margin-left: 15px; padding: 8px 12px; ",
                 "background: #1DB954; color: #fff; border-radius: 20px; ",

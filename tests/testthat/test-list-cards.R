@@ -60,3 +60,17 @@ test_that("quiet turns a failing value into NULL", {
     expect_null(quiet(stop("nope")))
     expect_equal(quiet(3), 3)
 })
+
+test_that("a card whose link isn't Spotify's has no Open button", {
+    data <- parse_top_artists(list(items = list(artist(spotify = "javascript:alert(1)"), artist("a2", "Two"))))
+    html <- html_of(artist_cards(data))
+    expect_equal(count('class="artist-card"', html), 2)
+    expect_equal(count("<a href", html), 1)
+    expect_no_match(html, "javascript:")
+    expect_no_match(html, 'href="NA"')
+})
+
+test_that("a link that opens in a new tab can't reach back into the page", {
+    data <- parse_top_artists(list(items = list(artist())))
+    expect_match(html_of(artist_cards(data)), 'rel="noopener noreferrer"')
+})

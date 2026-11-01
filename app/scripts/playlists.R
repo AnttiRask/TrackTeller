@@ -95,7 +95,6 @@ sanitise_cached_playlists <- function(items, max_rows = 20000L) {
             if (is.character(x) && length(x) == 1 && !is.na(x)) x else default
         }, character(1), USE.NAMES = FALSE)
     }
-    https_only <- function(x) ifelse(!is.na(x) & startsWith(x, "https://"), x, NA_character_)
 
     id <- text(function(r) r$id)
     name <- text(function(r) r$name)
@@ -114,7 +113,7 @@ sanitise_cached_playlists <- function(items, max_rows = 20000L) {
         track_count = count,
         owner       = text(function(r) r$owner, "Unknown"),
         is_public   = vapply(rows, function(r) isTRUE(r$is_public), logical(1), USE.NAMES = FALSE),
-        image_url   = https_only(text(function(r) r$image_url)),
-        spotify_url = https_only(text(function(r) r$spotify_url))
+        image_url   = spotify_image(text(function(r) r$image_url)),
+        spotify_url = spotify_link(text(function(r) r$spotify_url))
     )[keep, ]
 }
