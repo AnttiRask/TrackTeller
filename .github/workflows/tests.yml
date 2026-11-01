@@ -67,7 +67,7 @@ jobs:
           echo "/health without credentials: HTTP $CODE: $(cat /tmp/health.txt)"
           [ "$CODE" = "503" ]
           grep -q "SPOTIFY_CLIENT_ID" /tmp/health.txt
-          for asset in www/redirect.js www/session-ended.js www/favicon.png; do
+          for asset in www/redirect.js www/session-ended.js www/create-playlist.js www/favicon.png; do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:8080/$asset")
             echo "$asset: HTTP $CODE"
             [ "$CODE" = "200" ]

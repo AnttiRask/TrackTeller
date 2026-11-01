@@ -428,3 +428,60 @@ test_that("someone who is logged in is not told their session expired", {
         expect_error(output$auth_status)
     })
 })
+
+# ---- one playlist per dialog ----
+
+create_requests <- function(spotify) sum(spotify$keys() == "POST /users/user1/playlists")
+
+playlist_routes <- function() spotify_router(
+    "GET /me" = me(),
+    "GET /me/top/tracks" = tracks_answer(2),
+    "POST /users/user1/playlists" = response_json(201L, body = list(id = "newpl")),
+    "POST /playlists/newpl/tracks" = response_json(201L, body = list(snapshot_id = "s"))
+)
+
+test_that("a second click on Create in the same dialog doesn't make a second playlist", {
+    spotify <- playlist_routes()
+    local_mocked_responses(spotify$mock)
+
+    testServer(server, {
+        log_in(session, auth)
+        session$setInputs(create_playlist_tracks = 1)
+        # the first click is still being served when the impatient second one arrives
+        session$setInputs(new_playlist_name = "", confirm_create_playlist = 1)
+        session$setInputs(confirm_create_playlist = 2)
+        session$setInputs(confirm_create_playlist = 3)
+        session$flushReact()
+    })
+    expect_equal(create_requests(spotify), 1)
+    expect_equal(sum(spotify$keys() == "POST /playlists/newpl/tracks"), 1)
+})
+
+test_that("opening the dialog again allows the next playlist", {
+    spotify <- playlist_routes()
+    local_mocked_responses(spotify$mock)
+
+    testServer(server, {
+        log_in(session, auth)
+        session$setInputs(create_playlist_tracks = 1)
+        session$setInputs(new_playlist_name = "", confirm_create_playlist = 1)
+        session$setInputs(confirm_create_playlist = 2)           # ignored: same dialog
+        session$setInputs(create_playlist_tracks = 2)            # a new dialog
+        session$setInputs(new_playlist_name = "Again", confirm_create_playlist = 3)
+        session$flushReact()
+    })
+    expect_equal(create_requests(spotify), 2)
+})
+
+test_that("a click that finds the dialog already handled changes nothing else", {
+    spotify <- playlist_routes()
+    local_mocked_responses(spotify$mock)
+
+    testServer(server, {
+        log_in(session, auth)
+        before <- length(spotify$requests)
+        session$setInputs(confirm_create_playlist = 1)       # no dialog was ever opened
+        session$flushReact()
+        expect_equal(create_requests(spotify), 0)
+    })
+})

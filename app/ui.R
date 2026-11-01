@@ -58,6 +58,7 @@ uiFunc <- function(req) {
                 tags$script(src = "www/preferences.js"),
                 tags$script(src = "www/tabs.js"),
                 tags$script(src = "www/session-ended.js"),
+                tags$script(src = "www/create-playlist.js"),
                 tags$script(src = "www/playlists-cache.js"),
                 includeCSS("css/styles.css"),
                 # A waiter over the lists that are being fetched. Not over everything: it would

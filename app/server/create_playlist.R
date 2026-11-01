@@ -35,23 +35,27 @@ playlist_created_modal <- function(playlist_id) {
 create_playlist_server <- function(input, output, session, auth, artists, tracks, recent) {
     create_playlist_source <- reactiveVal(NULL)
 
-    observeEvent(input$create_playlist_artists, {
-        create_playlist_source("artist_tracks")
-        showModal(playlist_name_modal())
-    })
+    # Each dialog that is opened gets a number, and a dialog's Create click is handled once.
+    # Without it a second click while the first is still being served (for the artists list,
+    # up to 50 requests one after another, with the dialog still on screen until the answer is
+    # sent) is queued as another click and makes a second playlist with the same name.
+    dialog_number <- reactiveVal(0L)
+    handled_dialog <- reactiveVal(0L)
 
-    observeEvent(input$create_playlist_tracks, {
-        create_playlist_source("top_tracks")
+    open_dialog <- function(source) {
+        create_playlist_source(source)
+        dialog_number(isolate(dialog_number()) + 1L)
         showModal(playlist_name_modal())
-    })
+    }
 
-    observeEvent(input$create_playlist_recent, {
-        create_playlist_source("recently_played")
-        showModal(playlist_name_modal())
-    })
+    observeEvent(input$create_playlist_artists, open_dialog("artist_tracks"))
+    observeEvent(input$create_playlist_tracks, open_dialog("top_tracks"))
+    observeEvent(input$create_playlist_recent, open_dialog("recently_played"))
 
     observeEvent(input$confirm_create_playlist, {
         removeModal()
+        if (identical(handled_dialog(), dialog_number())) return()   # this dialog's click was handled
+        handled_dialog(dialog_number())
         req(auth$is_authenticated())
 
         source <- create_playlist_source()
