@@ -389,3 +389,42 @@ test_that("a playlist that was made but couldn't be filled is not reported as do
     })
     expect_true(any(grepl("failed to add tracks", notes)))
 })
+
+# ---- a page whose connection ended ----
+
+test_that("the page after a lost connection says the session expired", {
+    spotify <- spotify_router()
+    local_mocked_responses(spotify$mock)
+
+    testServer(server, {
+        session$setInputs(saved_prefs = list(), time_range = "short_term", shown_count = 20L, main_navbar = "top_artists")
+        session$setInputs(session_ended = TRUE)
+        session$flushReact()
+        expect_false(auth$is_authenticated())
+        expect_match(output$auth_status$html, "Session expired")
+    })
+})
+
+test_that("a fresh page that wasn't preceded by a lost connection says nothing", {
+    spotify <- spotify_router()
+    local_mocked_responses(spotify$mock)
+
+    testServer(server, {
+        session$setInputs(saved_prefs = list(), time_range = "short_term", shown_count = 20L, main_navbar = "top_artists")
+        session$flushReact()
+        expect_error(output$auth_status)
+    })
+})
+
+test_that("someone who is logged in is not told their session expired", {
+    spotify <- spotify_router("GET /me" = me())
+    local_mocked_responses(spotify$mock)
+
+    testServer(server, {
+        log_in(session, auth)
+        session$setInputs(session_ended = TRUE)
+        session$flushReact()
+        expect_true(auth$is_authenticated())
+        expect_error(output$auth_status)
+    })
+})

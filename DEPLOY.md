@@ -20,7 +20,7 @@ What the service runs with (the workflow and `deploy.sh` use the same flags; kee
 | Secrets | `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` from Secret Manager | Never in the repository or the image |
 | `APP_URL` | `https://trackteller.youcanbeapirate.com` | The OAuth redirect address |
 | Memory | 1 Gi | The share cards use ImageMagick |
-| Timeout | 3600 s, session affinity | A Shiny session is one long websocket |
+| Timeout | 3600 s, session affinity | A Shiny session is one long websocket; 3600 s is Cloud Run's maximum, so a session ends after an hour at the latest (the page says so and offers Reload: `www/session-ended.js`) |
 | Max instances | 3 | Cost limit |
 | Label | `git-sha=<first 12 characters of the commit>` | Tells which commit a revision is |
 

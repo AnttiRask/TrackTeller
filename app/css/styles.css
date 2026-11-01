@@ -373,3 +373,32 @@ a:focus, button:focus, input:focus, select:focus {
 .playlist-area .recalculating::before {
     display: none !important;
 }
+
+/* The message over Shiny's grey layer when the connection to the server has ended
+   (www/session-ended.js) */
+#session-ended {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 100000;
+    width: min(440px, calc(100vw - 32px));
+    padding: 24px;
+    background: #282828;
+    border: 1px solid #1DB954;
+    border-radius: 12px;
+    color: #fff;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+#session-ended h2 {
+    margin: 0 0 12px;
+    font-size: 1.3em;
+    color: #1DB954;
+}
+
+#session-ended p {
+    margin: 0 0 18px;
+    color: #b3b3b3;
+}
