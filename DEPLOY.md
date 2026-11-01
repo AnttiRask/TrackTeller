@@ -90,7 +90,20 @@ A value that isn't 32 lowercase hex characters is refused before anything is sto
 
    (Without `--no-dry-run` it only reports what it would delete.)
 6. **Uptime check and alert**: `ALERT_EMAIL=you@example.com infra/setup_uptime_alert.sh` (the address is not kept in the repository). It creates an email channel, an uptime check on `GET /health` every five minutes (passes on 200 with the body `ok`) and an alert policy that emails when at least two locations see it fail at the same time, and when it recovers. Safe to re-run; things are matched by name. Uptime checks and email alerts are in Google's free tier at this volume. The check looks at the configuration, not at Spotify: a Spotify outage does not alert.
-7. **GitHub**: the repository's `main` is protected, secret scanning and push protection are on, and Dependabot watches the Actions and the Docker base image.
+7. **Build buckets**: the two buckets Cloud Build and `--source` deploys write to (`run-sources-trackteller-app-europe-north1`, `trackteller-app_cloudbuild`) delete objects older than 30 days (soft delete, 7 days, stays on):
+   ```bash
+   echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":30}}]}' > lifecycle.json
+   gcloud storage buckets update gs://<bucket> --project trackteller-app --lifecycle-file=lifecycle.json
+   ```
+8. **Budget alert**: enable the API on this project only, then a budget for this project (10 EUR a month, email at 50, 90 and 100 %). `gcloud`'s quota project may be another project: pass `--billing-project=trackteller-app` and never enable the API there. A just-enabled API can take a minute before the first call works. A budget only warns, it never stops spending.
+   ```bash
+   gcloud services enable billingbudgets.googleapis.com --project trackteller-app
+   gcloud billing budgets create --billing-account=<id> --display-name="trackteller-app monthly" \
+     --filter-projects=projects/trackteller-app --budget-amount=10EUR \
+     --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0 \
+     --billing-project=trackteller-app
+   ```
+9. **GitHub**: the repository's `main` is protected, secret scanning and push protection are on, and Dependabot watches the Actions and the Docker base image (it skips minor and major versions of the base image: the R version must match `renv.lock`).
 
 ## Changing the R packages
 
