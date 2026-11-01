@@ -120,3 +120,60 @@ fresh_token <- function(access_token = "tok", expires_in = 3600) {
     list(access_token = access_token, token_type = "Bearer", refresh_token = "ref",
          expires_at = Sys.time() + expires_in)
 }
+
+# A local server for the share card's pictures. Paths: /ok.jpg and /ok.png (real images),
+# /slow.jpg (a real image after `slow` seconds), /redirect.jpg (302 to /ok.jpg), /page.jpg
+# (HTML, claiming to be a picture), /big.jpg (a real image padded past 100 kB), /missing.jpg
+# (404). /hits says how often each path was asked for. Returns list(url, proc, hits()).
+start_image_server <- function(slow = 3) {
+    skip_if_not_installed("callr")
+    skip_if_not_installed("httpuv")
+    skip_if_not_installed("magick")
+
+    img <- magick::image_blank(40, 40, color = "#1DB954")
+    jpeg <- magick::image_write(img, format = "jpeg")
+    png <- magick::image_write(img, format = "png")
+    big <- c(jpeg, as.raw(rep(0, 150000)))
+
+    port <- httpuv::randomPort()
+    proc <- callr::r_bg(function(port, jpeg, png, big, slow) {
+        hits <- list()
+        app <- list(call = function(req) {
+            path <- req$PATH_INFO
+            if (path == "/hits") {
+                return(list(status = 200L, headers = list("Content-Type" = "application/json"),
+                            body = if (length(hits) == 0) "{}" else paste0("{", paste0('"', names(hits), '": ', unlist(hits), collapse = ", "), "}")))
+            }
+            hits[[path]] <<- (hits[[path]] %||% 0L) + 1L
+            image <- function(bytes, type = "image/jpeg") list(status = 200L, headers = list("Content-Type" = type), body = bytes)
+            switch(path,
+                "/ok.jpg" = image(jpeg),
+                "/ok.png" = image(png, "image/png"),
+                # a late answer that doesn't hold the server up (a real CDN serves many at once)
+                "/slow.jpg" = promises::promise(function(resolve, reject) {
+                    later::later(function() resolve(image(jpeg)), slow)
+                }),
+                "/redirect.jpg" = list(status = 302L, headers = list(Location = "/ok.jpg"), body = ""),
+                "/page.jpg" = list(status = 200L, headers = list("Content-Type" = "text/html"), body = "<html>not a picture</html>"),
+                "/big.jpg" = image(big),
+                list(status = 404L, headers = list("Content-Type" = "text/plain"), body = "no")
+            )
+        })
+        `%||%` <- function(a, b) if (is.null(a)) b else a
+        httpuv::runServer("127.0.0.1", port, app)
+    }, args = list(port = port, jpeg = jpeg, png = png, big = big, slow = slow), supervise = TRUE)
+
+    url <- paste0("http://127.0.0.1:", port)
+    up <- FALSE
+    for (i in 1:50) {
+        up <- tryCatch({ req_perform(request(paste0(url, "/hits"))); TRUE }, error = function(e) FALSE)
+        if (up) break
+        Sys.sleep(0.1)
+    }
+    if (!up) { proc$kill(); skip("the local image server did not start") }
+
+    list(url = url, proc = proc, hits = function() {
+        h <- resp_body_json(req_perform(request(paste0(url, "/hits"))))
+        unlist(h)
+    })
+}

@@ -55,10 +55,85 @@ test_that("truncation counts width: a CJK character takes the room of two letter
     expect_equal(trunc_str("", 30), "")
 })
 
-test_that("a picture that can't be fetched becomes a plain square", {
-    img <- fetch_card_image("http://127.0.0.1:1/nothing.jpg", size = 40)
-    expect_equal(size_of(img), c(40, 40))
-    expect_equal(size_of(fetch_card_image(NA_character_, size = 40)), c(40, 40))
+everything <- function(url) TRUE      # for the local server, which is not one of Spotify's hosts
+
+test_that("pictures are fetched and scaled, in order, and anything that fails becomes a plain square", {
+    server <- start_image_server()
+    withr::defer(server$proc$kill())
+    urls <- paste0(server$url, c("/ok.jpg", "/missing.jpg", "/ok.png", NA, ""))
+
+    pictures <- fetch_card_images(urls, size = 40, allowed = everything)
+    expect_length(pictures, 5)
+    for (picture in pictures) expect_equal(size_of(picture), c(40, 40))
+
+    # the real ones are the green of the test image, the failed ones the placeholder grey
+    pixel <- function(picture) as.character(magick::image_data(magick::image_crop(picture, "1x1+20+20"), channels = "rgb"))[1:3]
+    expect_equal(paste(pixel(pictures[[1]]), collapse = ""), "1db954")
+    expect_equal(paste(pixel(pictures[[3]]), collapse = ""), "1db954")
+    expect_equal(paste(pixel(pictures[[2]]), collapse = ""), "282828")
+    expect_equal(paste(pixel(pictures[[4]]), collapse = ""), "282828")
+})
+
+test_that("only addresses on Spotify's image hosts are contacted", {
+    server <- start_image_server()
+    withr::defer(server$proc$kill())
+
+    # the default rule: the local server is not Spotify, so it is never asked
+    pictures <- fetch_card_images(paste0(server$url, "/ok.jpg"), size = 40)
+    expect_equal(size_of(pictures[[1]]), c(40, 40))
+    expect_length(server$hits(), 0)
+
+    # and so are not addresses that only look like Spotify's
+    for (url in c("http://i.scdn.co/image/a", "https://i.scdn.co.evil.example/a", "https://evil.example/i.scdn.co/a",
+                  "https://i.scdn.co@evil.example/a", "file:///etc/passwd", "ftp://i.scdn.co/a", "/etc/passwd")) {
+        expect_equal(size_of(fetch_card_images(url, size = 40)[[1]]), c(40, 40))
+    }
+})
+
+test_that("a picture that arrives late is given up on, and the others still come", {
+    server <- start_image_server(slow = 4)
+    withr::defer(server$proc$kill())
+    urls <- paste0(server$url, c("/ok.jpg", "/slow.jpg", "/ok.png"))
+
+    elapsed <- system.time(pictures <- fetch_card_images(urls, size = 40, timeout = 1, allowed = everything))[["elapsed"]]
+    expect_lt(elapsed, 3.5)                   # not the 4 s the slow one takes
+    expect_length(pictures, 3)
+    pixel <- function(picture) paste(as.character(magick::image_data(magick::image_crop(picture, "1x1+20+20"), channels = "rgb"))[1:3], collapse = "")
+    expect_equal(c(pixel(pictures[[1]]), pixel(pictures[[2]]), pixel(pictures[[3]])), c("1db954", "282828", "1db954"))
+})
+
+test_that("redirects are not followed, and pages and oversized files are not turned into pictures", {
+    server <- start_image_server()
+    withr::defer(server$proc$kill())
+    urls <- paste0(server$url, c("/redirect.jpg", "/page.jpg", "/big.jpg"))
+
+    pictures <- fetch_card_images(urls, size = 40, max_bytes = 100000, allowed = everything)
+    pixel <- function(picture) paste(as.character(magick::image_data(magick::image_crop(picture, "1x1+20+20"), channels = "rgb"))[1:3], collapse = "")
+    expect_equal(vapply(pictures, pixel, character(1)), rep("282828", 3))
+    # the redirect's target was never asked for
+    expect_false("/ok.jpg" %in% names(server$hits()))
+})
+
+test_that("only the start of a JPEG, a PNG or a WebP counts as a picture", {
+    expect_true(card_image_bytes(as.raw(c(0xFF, 0xD8, 0xFF, 0xE0, rep(0, 12)))))
+    expect_true(card_image_bytes(as.raw(c(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, rep(0, 8)))))
+    expect_true(card_image_bytes(c(charToRaw("RIFF"), as.raw(c(1, 2, 3, 4)), charToRaw("WEBPVP8 "))))
+    expect_false(card_image_bytes(charToRaw("<html>not a picture at all</html>")))
+    expect_false(card_image_bytes(charToRaw("%!PS-Adobe-3.0 EPSF")))          # PostScript: ImageMagick would run it
+    expect_false(card_image_bytes(charToRaw("<svg xmlns=\"http://www.w3.org/2000/svg\"/>")))
+    expect_false(card_image_bytes(c(charToRaw("RIFF"), as.raw(c(1, 2, 3, 4)), charToRaw("WAVEfmt "))))
+    expect_false(card_image_bytes(raw(0)))
+    expect_false(card_image_bytes(NULL))
+    expect_false(card_image_bytes("FF D8 FF"))
+})
+
+test_that("a card is still made when no picture can be had at all", {
+    data <- parse_top_artists(list(items = lapply(1:10, function(i) artist(id = paste0("a", i), name = paste("Artist", i),
+                                                                           images = list(list(url = "https://i.scdn.co/image/x"))))))
+    # no network in the tests: every fetch fails, every picture is a placeholder
+    elapsed <- system.time(img <- stats_card_for("artists", data, "Pat", "short_term"))[["elapsed"]]
+    expect_equal(size_of(img), c(1200, 630))
+    expect_lt(elapsed, 30)
 })
 
 test_that("Chinese, Japanese and Korean names are drawn with real letters, not empty boxes", {

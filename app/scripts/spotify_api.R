@@ -175,9 +175,37 @@ spotify_post <- function(path, token, body = NULL, ...) {
 # followers are optional here). Each returns NULL when there is nothing to show.
 # ---------------------------------------------------------------------------
 
+# Addresses that come from Spotify end up in `href` and `src` of the page and in what the
+# server fetches for the share cards. Only https addresses on Spotify's own hosts are let
+# through; anything else becomes NA (a card without a link, a picture that is a placeholder).
+# The same hosts the page's Content-Security-Policy allows (csp.R).
+
+# The host of an https address, lower case, or NA. Userinfo ("https://open.spotify.com@evil.example/")
+# and anything but letters, digits, dots and hyphens in the host make it NA.
+https_host <- function(x) {
+    x <- as.character(x)
+    if (length(x) == 0) return(character(0))
+    ok <- !is.na(x) & grepl("^https://[A-Za-z0-9.-]+(:[0-9]+)?([/?#]|$)", x)
+    ifelse(ok, tolower(sub("^https://([A-Za-z0-9.-]+).*$", "\\1", x)), NA_character_)
+}
+
+# A link to something on Spotify (open.spotify.com), or NA
+spotify_link <- function(x) {
+    x <- as.character(x)
+    ifelse(!is.na(https_host(x)) & https_host(x) == "open.spotify.com", x, NA_character_)
+}
+
+# A picture on Spotify's image hosts (*.scdn.co, *.spotifycdn.com), or NA
+spotify_image <- function(x) {
+    x <- as.character(x)
+    host <- https_host(x)
+    ifelse(!is.na(host) & (endsWith(host, ".scdn.co") | endsWith(host, ".spotifycdn.com")), x, NA_character_)
+}
+
 # First image url of an object that has an `images` list, or NA
 first_image_url <- function(images) {
-    if (length(images) > 0 && !is.null(images[[1]]$url)) images[[1]]$url else NA_character_
+    url <- if (length(images) > 0 && !is.null(images[[1]]$url)) images[[1]]$url else NA_character_
+    spotify_image(url)
 }
 
 # Artist names of a track, comma separated
@@ -209,7 +237,7 @@ parse_top_artists <- function(data) {
         followers   = column(items, \(a) as.numeric(a$followers$total), NA_real_, numeric(1)),
         genres      = vapply(items, \(a) paste(unlist(a$genres), collapse = ", "), character(1), USE.NAMES = FALSE),
         image_url   = vapply(items, \(a) first_image_url(a$images), character(1), USE.NAMES = FALSE),
-        spotify_url = column(items, \(a) a$external_urls$spotify, NA_character_, character(1))
+        spotify_url = spotify_link(column(items, \(a) a$external_urls$spotify, NA_character_, character(1)))
     )
 }
 
@@ -226,7 +254,7 @@ parse_top_tracks <- function(data) {
         popularity      = column(items, \(t) as.integer(t$popularity), NA_integer_, integer(1)),
         duration_ms     = column(items, \(t) as.numeric(t$duration_ms), NA_real_, numeric(1)),
         album_image_url = vapply(items, \(t) first_image_url(t$album$images), character(1), USE.NAMES = FALSE),
-        spotify_url     = column(items, \(t) t$external_urls$spotify, NA_character_, character(1))
+        spotify_url     = spotify_link(column(items, \(t) t$external_urls$spotify, NA_character_, character(1)))
     )
 }
 
@@ -241,7 +269,7 @@ parse_recent_tracks <- function(data, count = 20) {
         name        = column(items, \(i) i$track$name, "(Unknown)", character(1)),
         artist      = vapply(items, \(i) artist_names(i$track$artists), character(1), USE.NAMES = FALSE),
         album       = column(items, \(i) i$track$album$name, "", character(1)),
-        spotify_url = column(items, \(i) i$track$external_urls$spotify, NA_character_, character(1))
+        spotify_url = spotify_link(column(items, \(i) i$track$external_urls$spotify, NA_character_, character(1)))
     )
 
     head(dplyr::distinct(tracks, id, .keep_all = TRUE), count)
@@ -262,7 +290,7 @@ parse_playlists_page <- function(items) {
         owner       = column(items, \(p) p$owner$display_name, "Unknown", character(1)),
         is_public   = vapply(items, \(p) isTRUE(p$public %||% TRUE), logical(1), USE.NAMES = FALSE),
         image_url   = vapply(items, \(p) first_image_url(p$images), character(1), USE.NAMES = FALSE),
-        spotify_url = column(items, \(p) p$external_urls$spotify, NA_character_, character(1))
+        spotify_url = spotify_link(column(items, \(p) p$external_urls$spotify, NA_character_, character(1)))
     )
 }
 
