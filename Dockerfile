@@ -1,4 +1,4 @@
-# R 4.5.2 matches renv.lock. r-ver is much smaller than rocker/shiny, and we
+# R 4.5.x matches renv.lock (patch releases are fine; a new minor needs a new lock). r-ver is much smaller than rocker/shiny, and we
 # only need R: app/run.R starts the app with shiny::runApp()
 FROM rocker/r-ver:4.5.3
 

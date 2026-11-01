@@ -9,7 +9,7 @@
 # Keep the package list in sync with the library() calls in app/.
 set -euo pipefail
 
-BASE_IMAGE=rocker/r-ver:4.5.2     # keep in sync with the Dockerfile
+BASE_IMAGE=rocker/r-ver:4.5.3     # keep in sync with the Dockerfile
 RENV_VERSION=1.0.3                # keep in sync with renv/activate.R
 OUT="${1:-renv.lock}"
 NAME=trackteller-lock

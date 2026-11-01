@@ -19,7 +19,7 @@ sudo docker compose up --build
 ./deploy.sh
 
 # Packages are restored inside the Docker image; renv::restore() on a machine whose R
-# version differs from renv.lock (4.5.2) may not work
+# version differs from renv.lock (4.5.x) may not work
 ```
 
 Tests (testthat, no live Spotify calls) run inside the production image, so they see the R and package versions that run in production:
@@ -75,8 +75,8 @@ CI runs the same script (`tests.yml`). httr2's mocks skip its retry loop, so the
 - Font: Gotham via CDN
 
 ### Deployment
-- Docker image based on `rocker/r-ver:4.5.2` (R version matches `renv.lock`): system libraries for `magick` and the share-card font, packages restored from Posit Package Manager's Linux binaries, non-root user `trackteller`, started with `Rscript app/run.R`. `.dockerignore` is an allowlist.
-- **Changing R packages:** regenerate `renv.lock` inside the image's base with `infra/regenerate_renv_lock.sh` (keep its package list in sync with the `library()` calls). Don't snapshot on the laptop: local R is 4.6.1, the lock is for 4.5.2, and `renv::restore()` won't work here.
+- Docker image based on `rocker/r-ver:4.5.3` (its R minor version, 4.5, matches `renv.lock`, which was written under 4.5.2; Dependabot proposes patch releases only; keep `BASE_IMAGE` in `infra/regenerate_renv_lock.sh` in step): system libraries for `magick` and the share-card font, packages restored from Posit Package Manager's Linux binaries, non-root user `trackteller`, started with `Rscript app/run.R`. `.dockerignore` is an allowlist.
+- **Changing R packages:** regenerate `renv.lock` inside the image's base with `infra/regenerate_renv_lock.sh` (keep its package list in sync with the `library()` calls). Don't snapshot on the laptop: local R is 4.6.1, the lock is for 4.5.x, and `renv::restore()` won't work here.
 - **CI/CD** (`.github/workflows/`): `tests.yml` builds the image and checks that the app starts (the testthat suite runs in the same job); `deploy_shiny_app.yml` runs it first, then deploys with a keyless Workload Identity login as `trackteller-deploy` and smoke-tests the revision's `git-sha` label and `GET /`. It deploys on pushes to `main` that touch `app/**` or the build files, and on demand (Actions tab, or `gh workflow run deploy_shiny_app.yml --ref main`). Actions are pinned to commit SHAs; `dependabot.yml` covers Actions and Docker.
 - An uptime check on `/health` (every 5 minutes, from several locations) emails the owner when it fails from two or more at once; it is set up by `infra/setup_uptime_alert.sh` (Cloud Monitoring via its REST API; the address is passed in, not committed). The service runs as `trackteller-runtime` (access to the two Spotify secrets only). Setup scripts and the permission test are in `infra/` (`setup_keyless_deploy.sh`, `test_deploy_identity.sh`); the registry cleanup policy is `infra/artifact-registry-cleanup.json`.
 - `deploy.sh` is the manual fallback: it reads no `.env` and asks nothing; it uses the credentials in Secret Manager (or both from the environment, which it then stores), validates them (32 hex characters, never printed), and runs `gcloud run deploy` with the same flags as the workflow plus the `git-sha` label (`-dirty` for uncommitted changes). The production URL is fixed. `--dry-run` checks and prints without changing anything. Keep its flags and the workflow's in sync.
