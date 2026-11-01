@@ -3,12 +3,12 @@
 // Server and Posit Connect), so the page looked frozen with no explanation. The connection
 // ends after an hour at the latest (Cloud Run's limit for one request), and when the device
 // sleeps or loses the network. The login lives in the server's memory, so there is nothing to
-// resume: say so, offer Reload, and if the tab was in the background when it happened,
-// reload it when the user comes back. The reloaded page says "Session expired".
+// resume: say so and offer Reload. The page is never reloaded on its own: a first version did
+// that when the user came back to a tab that had dropped in the background, and the dialog
+// was on screen the whole time with a button that could no longer be pressed. The reloaded
+// page says "Session expired".
 (function () {
     var KEY = "trackteller.session_ended";
-    var disconnected = false;
-    var wasHidden = false;
     var unloading = false;
 
     // Closing or reloading the page also closes the connection: that is not a lost session
@@ -47,17 +47,8 @@
 
     $(document).on("shiny:disconnected", function () {
         if (unloading) return;
-        disconnected = true;
-        wasHidden = document.visibilityState === "hidden";
         try { window.sessionStorage.setItem(KEY, "1"); } catch (e) { /* storage blocked: no message afterwards */ }
         show();
-    });
-
-    // Back in a tab that lost its connection while it was in the background: start over
-    document.addEventListener("visibilitychange", function () {
-        if (disconnected && wasHidden && document.visibilityState === "visible") {
-            window.location.reload();
-        }
     });
 
     // On the next page: tell the server that the last one ended, once
