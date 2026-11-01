@@ -50,7 +50,7 @@ CI runs the same script (`tests.yml`). httr2's mocks skip its retry loop, so the
 - `app/www/create-playlist.js` + the dialog counter in `server/create_playlist.R` — one playlist per dialog. `removeModal()` is only sent to the browser when the handler has finished, and for the artists list the handler makes up to 50 requests one after another, so the dialog (and its Create button) stays on screen for a long time and a second click used to be queued as a second click and make a second playlist with the same name. The script disables the button and says "Creating…" at the first click; the server gives each opened dialog a number and handles its Create click once. Tested, including that the test fails without the guard
 - `app/www/preferences.js` — saves the two shared choices in `localStorage` and sends what was saved when the page connects (see "Shared choices" below)
 - `app/scripts/dialogs.R` — `logout_dialog()` (asks before logging out; Cancel green, Log out the brand red)
-- `app/scripts/charts.R` — `genre_chart()` and its sizing (`genre_chart_css_height()`, `genre_chart_min_height()`)
+- `app/scripts/charts.R` — `genre_chart()` and its sizing (`genre_chart_css_height()`, `genre_chart_min_height()`). It is plotly, drawn in the browser: its font "Gotham" comes from the CDN like the page's, not from the image, so no font is needed in the Dockerfile for it
 - `app/scripts/playlists_module.R` + `app/scripts/playlists.R` — the My Playlists tab as a Shiny module (`playlists_ui()` / `playlists_server()`) and its pure helpers (paging, letters, Finnish A–Z order, validation of the browser copy). Spotify gives 50 playlists per request with no filter, and overlapping requests are throttled (probed 2026-10-25 on a 4,213-playlist account: 85 pages = 47 s one after another, 73–85 s with 3–5 at once, one request stalling ~68 s), so the loader asks for one page at a time **without blocking the R session** (`spotify_get_async()`, a chain of promises), shows the playlists as they arrive in Spotify's order, 50 to a page, and switches on A–Z order and the letter filter when everything is here. It is tested with a fake Spotify (`testServer()`), including a 4,213-playlist run
 - `app/scripts/spotify_api.R` — the Spotify API layer: `spotify_get()` / `spotify_post()` return `list(state, data, http_status, message)` (`ok`, `reauth`, `forbidden`, `rate_limited`, `error`) with timeouts and retries; parsers turn the JSON into tibbles and tolerate fields Spotify has removed (`popularity`, `followers`); playlist writes try the current endpoint and fall back to the newer one on 403/404
 - `app/scripts/config.R` — reads env vars (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `APP_URL`), validates config
@@ -85,7 +85,7 @@ CI runs the same script (`tests.yml`). httr2's mocks skip its retry loop, so the
 
 ## Where things stand
 
-The 2026 refactor is built and live; what is still open (the chart font; cloud housekeeping) is listed in section 11 of `trackteller-refactor-plan.md`, with the reasons. None of it is approved until the user says so. Deploying and running the cloud setup are described in `DEPLOY.md`.
+The 2026 refactor is built and live; what is still open (cloud housekeeping) is listed in section 11 of `trackteller-refactor-plan.md`, with the reasons. None of it is approved until the user says so. Deploying and running the cloud setup are described in `DEPLOY.md`.
 
 ## R Coding Conventions
 
