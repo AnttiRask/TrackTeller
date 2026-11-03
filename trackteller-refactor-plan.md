@@ -21,7 +21,7 @@ TrackTeller is the only app that has none of the sibling hardening. It is still 
 | Keyless deploy (Workload Identity), dedicated runtime account | all | No: runs as the default compute account, which **still has `roles/editor`** (live) |
 | Security headers / CSP | all | None |
 | Repo hygiene (secret scanning, push protection, Dependabot, protected `main`) | all | **All disabled**; `main` not protected (live). The repo is public |
-| Websocket: `--timeout 3600`, `--session-affinity`, `allowReconnect("force")` | Fillari, Biblio, Tune | No: timeout 300 s, so the page greys out after 5 minutes (live) |
+| Websocket: `--timeout 3600`, `--session-affinity`, `allowReconnect("force")` | Fillari, Biblio, Tune | No: timeout 300 s, so the page greys out after 5 minutes (live) **Since changed (Phase 2): the live service has `--timeout 3600`, session affinity and max 3 instances (checked 2026-11-03, revision 00065); `allowReconnect` was not turned on, on purpose, see section 11** |
 | `--max-instances 3` | all | 20 (live) |
 | Artifact Registry cleanup policy | all | None: **80 image versions** in the repo (live) |
 | FillariStatus in the footer | all | Missing in `ui.R` and `docs/index.html` (code) |
@@ -63,7 +63,7 @@ So nothing is broken today; the risk is a future cut-over. Consequences for Phas
 
 ### 1.2 Read-only inventory (already partly done)
 
-Cloud Run: service `trackteller-app`, revision `00040-4v2`, runs as the default compute account, timeout 300 s, concurrency 80, max instances 20, no session affinity (live). Still to read: secrets and who can read them, the domain mapping, the billing budget (the Billing Budgets API may not be enabled in the project, as in the siblings), and the bucket sizes.
+Cloud Run: service `trackteller-app`, revision `00040-4v2`, runs as the default compute account, timeout 300 s, concurrency 80, max instances 20, no session affinity (live). **Since changed (Phase 2): timeout 3600 s, session affinity on, max 3 instances, runs as `trackteller-runtime`; this paragraph is the audit as found.** Still to read: secrets and who can read them, the domain mapping, the billing budget (the Billing Budgets API may not be enabled in the project, as in the siblings), and the bucket sizes.
 
 ---
 
@@ -122,7 +122,7 @@ Found in the code:
 
 - **The `state` value is never checked.** The app stores it (`session$userData$oauth_state`, `server.R:105`) but the callback never compares it with `query$state`. The CLAUDE.md memory note claims "CSRF state (32 chars)"; only half of that exists. It is also generated with `sample()`, which is not a cryptographic source. Because Shiny sessions are per-websocket and the redirect leaves the page, the state has to survive the round trip: store it in a short-lived, signed value (cookie or the `state` itself as an HMAC of a nonce + timestamp using the client secret) and verify it on return. This is the one real security gap in the login.
 - `show_dialog = "true"` forces Spotify's consent screen at every login. With the Shiny session lost on reload (below) it makes every return visit a full consent step. Dropping it lets Spotify skip the screen when consent already exists.
-- **The login lives only in the session's memory.** A reload, a websocket drop, or a Cloud Run instance change logs the user out. With the 300 s timeout this happens after five minutes of idle. Options in order of effort: (a) just fix the timeout/affinity and show "Your session ended, log in again" with a one-click re-login (cheap, recommended); (b) keep the refresh token in the browser's `localStorage` and re-establish the session through the server (the user's own browser, but it widens the damage of any XSS; try/catch guarded); (c) PKCE so the client secret isn't needed for the browser flow (a bigger change). **Decision for the user.**
+- **The login lives only in the session's memory.** A reload, a websocket drop, or a Cloud Run instance change logs the user out. With the 300 s timeout (since changed to 3600 s, see section 11) this happened after five minutes of idle. Options in order of effort: (a) just fix the timeout/affinity and show "Your session ended, log in again" with a one-click re-login (cheap, recommended); (b) keep the refresh token in the browser's `localStorage` and re-establish the session through the server (the user's own browser, but it widens the damage of any XSS; try/catch guarded); (c) PKCE so the client secret isn't needed for the browser flow (a bigger change). **Decision for the user.**
 - `get_access_token` is a `reactive()` that **writes to `token_info`**, the `reactiveVal` it reads (`server.R:122-152`). It works by luck of the invalidation order; make it a plain function (or `observe`-driven refresh) so there is no reactive that has side effects.
 - Tokens are held in memory and never logged; keep it that way (a test: the token string never appears in a rendered output).
 - `allowReconnect("force")` as in Fillari/Biblio is safe here only after the playlist-creation observers are idempotent: the re-sent `confirm_create_playlist` click count would **create a second playlist**. Guard creation with a per-click token or disable the button while it runs.
