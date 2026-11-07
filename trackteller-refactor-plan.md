@@ -28,7 +28,7 @@ TrackTeller is the only app that has none of the sibling hardening. It is still 
 | Image | `rocker/r-ver` + Posit binaries, non-root, allowlist `.dockerignore` | `rocker/shiny:4.3.1`, root user, denylist `.dockerignore` (code) |
 | Docs match reality | yes | `PLAN.md` and `DEPLOY.md` are the original plan (`DEPLOY.md` still shows secrets as `--set-env-vars`) |
 
-Also seen in the live inventory: a service `themealot-app` sits in the `trackteller-app` project (probably a stray, like the ones the TuneTeller plan found), and `bibliostatus-app` / `tuneteller-app` there show "not ready". Not touched.
+Also seen in the live inventory: a service `themealot-app` sits in the `trackteller-app` project (probably a stray, like the ones the TuneTeller plan found), and `bibliostatus-app` / `tuneteller-app` there show "not ready". Not touched. **Since changed:** those two were deleted on 2026-10-31 (item 6 in section 11), and the last two strays elsewhere (in `bibliostatus-app`) on 2026-11-07; no stray service remains in any project.
 
 ---
 
